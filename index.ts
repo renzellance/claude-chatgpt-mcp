@@ -9,27 +9,35 @@ import {
 import { runAppleScript } from "run-applescript";
 import { run } from "@jxa/run";
 
-// Define the ChatGPT tool
+// Define the ChatGPT tool with enhanced operations
 const CHATGPT_TOOL: Tool = {
 	name: "chatgpt",
-	description: "Interact with the ChatGPT desktop app on macOS",
+	description: "Interact with the ChatGPT desktop app on macOS including image generation",
 	inputSchema: {
 		type: "object",
 		properties: {
 			operation: {
 				type: "string",
-				description: "Operation to perform: 'ask' or 'get_conversations'",
-				enum: ["ask", "get_conversations"],
+				description: "Operation to perform: 'ask', 'get_conversations', or 'generate_image'",
+				enum: ["ask", "get_conversations", "generate_image"],
 			},
 			prompt: {
 				type: "string",
 				description:
-					"The prompt to send to ChatGPT (required for ask operation)",
+					"The prompt to send to ChatGPT (required for ask and generate_image operations)",
 			},
 			conversation_id: {
 				type: "string",
 				description:
 					"Optional conversation ID to continue a specific conversation",
+			},
+			image_style: {
+				type: "string",
+				description: "Style for image generation (e.g., 'realistic', 'cartoon', 'abstract')",
+			},
+			image_size: {
+				type: "string",
+				description: "Size for image generation (e.g., '1024x1024', '1792x1024', '1024x1792')",
 			},
 		},
 		required: ["operation"],
@@ -38,8 +46,8 @@ const CHATGPT_TOOL: Tool = {
 
 const server = new Server(
 	{
-		name: "ChatGPT MCP Tool",
-		version: "1.0.0",
+		name: "ChatGPT MCP Tool with Image Generation",
+		version: "1.1.0",
 	},
 	{
 		capabilities: {
@@ -48,7 +56,7 @@ const server = new Server(
 	},
 );
 
-// Check if ChatGPT app is installed and running
+// Check if ChatGPT app is installed and running with M4 compatibility
 async function checkChatGPTAccess(): Promise<boolean> {
 	try {
 		const isRunning = await runAppleScript(`
@@ -62,7 +70,7 @@ async function checkChatGPTAccess(): Promise<boolean> {
 			try {
 				await runAppleScript(`
           tell application "ChatGPT" to activate
-          delay 2
+          delay 3
         `);
 			} catch (activateError) {
 				console.error("Error activating ChatGPT app:", activateError);
@@ -107,19 +115,19 @@ async function askChatGPT(
 		const script = `
       tell application "ChatGPT"
         activate
-        delay 1
+        delay 2
         tell application "System Events"
           tell process "ChatGPT"
             ${
-							conversationId
-								? `
+				conversationId
+					? `
               try
                 click button "${conversationId}" of group 1 of group 1 of window 1
                 delay 1
               end try
             `
-								: ""
-						}
+					: ""
+			}
             -- Clear any existing text in the input field
             keystroke "a" using {command down}
             keystroke (ASCII character 8) -- Delete key
@@ -133,19 +141,19 @@ async function askChatGPT(
             delay 0.5
             keystroke return
             
-            -- Wait for the response with dynamic detection
-            set maxWaitTime to 120 -- Maximum wait time in seconds
+            -- Wait for the response with dynamic detection (enhanced for M4)
+            set maxWaitTime to 180 -- Increased wait time for M4 compatibility
             set waitInterval to 1 -- Check interval in seconds
             set totalWaitTime to 0
             set previousText to ""
             set stableCount to 0
-            set requiredStableChecks to 3 -- Number of consecutive stable checks required
+            set requiredStableChecks to 4 -- Increased stable checks for M4
             
             repeat while totalWaitTime < maxWaitTime
               delay waitInterval
               set totalWaitTime to totalWaitTime + waitInterval
               
-              -- Get current text
+              -- Get current text with enhanced error handling
               set frontWin to front window
               set allUIElements to entire contents of frontWin
               set conversationText to {}
@@ -154,6 +162,8 @@ async function askChatGPT(
                   if (role of e) is "AXStaticText" then
                     set end of conversationText to (description of e)
                   end if
+                on error
+                  -- Silently continue if element access fails
                 end try
               end repeat
               
@@ -259,6 +269,166 @@ async function askChatGPT(
 	}
 }
 
+// Function to generate images using ChatGPT's DALL-E integration
+async function generateImage(
+	prompt: string,
+	style?: string,
+	size?: string,
+	conversationId?: string,
+): Promise<string> {
+	await checkChatGPTAccess();
+	try {
+		// Construct the image generation prompt
+		let imagePrompt = prompt;
+		
+		// Add style if specified
+		if (style) {
+			imagePrompt += ` in ${style} style`;
+		}
+		
+		// Add size preference if specified
+		if (size) {
+			imagePrompt += ` (${size})`;
+		}
+		
+		// Prefix with DALL-E instruction
+		const fullPrompt = `Please generate an image using DALL-E: ${imagePrompt}`;
+		
+		const encodeForAppleScript = (text: string): string => {
+			return text.replace(/"/g, '\\"');
+		};
+
+		const encodedPrompt = encodeForAppleScript(fullPrompt);
+		
+		// Save original clipboard content
+		const saveClipboardScript = `
+			set savedClipboard to the clipboard
+			return savedClipboard
+		`;
+		const originalClipboard = await runAppleScript(saveClipboardScript);
+		const encodedOriginalClipboard = encodeForAppleScript(originalClipboard);
+		
+		const script = `
+      tell application "ChatGPT"
+        activate
+        delay 2
+        tell application "System Events"
+          tell process "ChatGPT"
+            ${
+				conversationId
+					? `
+              try
+                click button "${conversationId}" of group 1 of group 1 of window 1
+                delay 1
+              end try
+            `
+					: ""
+			}
+            -- Clear any existing text in the input field
+            keystroke "a" using {command down}
+            keystroke (ASCII character 8) -- Delete key
+            delay 0.5
+            
+            -- Set the clipboard to the prompt text
+            set the clipboard to "${encodedPrompt}"
+            
+            -- Paste the prompt and send it
+            keystroke "v" using {command down}
+            delay 0.5
+            keystroke return
+            
+            -- Wait longer for image generation (can take much longer than text)
+            set maxWaitTime to 300 -- 5 minutes for image generation
+            set waitInterval to 2 -- Check every 2 seconds for images
+            set totalWaitTime to 0
+            set previousText to ""
+            set stableCount to 0
+            set requiredStableChecks to 5 -- More stable checks for image generation
+            
+            repeat while totalWaitTime < maxWaitTime
+              delay waitInterval
+              set totalWaitTime to totalWaitTime + waitInterval
+              
+              -- Get current text and check for image indicators
+              set frontWin to front window
+              set allUIElements to entire contents of frontWin
+              set conversationText to {}
+              set hasImage to false
+              
+              repeat with e in allUIElements
+                try
+                  if (role of e) is "AXStaticText" then
+                    set end of conversationText to (description of e)
+                  else if (role of e) is "AXImage" then
+                    set hasImage to true
+                  end if
+                on error
+                  -- Silently continue if element access fails
+                end try
+              end repeat
+              
+              set AppleScript's text item delimiters to linefeed
+              set currentText to conversationText as text
+              
+              -- Check for image generation completion
+              if hasImage and (currentText contains "I've generated" or currentText contains "Here's the image" or currentText contains "I've created") then
+                -- Image appears to be generated
+                exit repeat
+              end if
+              
+              -- Check if text has stabilized
+              if currentText is equal to previousText then
+                set stableCount to stableCount + 1
+                if stableCount ≥ requiredStableChecks then
+                  exit repeat
+                end if
+              else
+                set stableCount to 0
+                set previousText to currentText
+              end if
+              
+              -- Check for generation indicators
+              if currentText contains "▍" or currentText contains "Generating" or currentText contains "Creating" then
+                set stableCount to 0
+              end if
+            end repeat
+            
+            -- Return response indicating image generation status
+            if (count of conversationText) = 0 then
+              return "No response found. Image generation may still be processing."
+            else
+              set AppleScript's text item delimiters to linefeed
+              set fullText to conversationText as text
+              return fullText
+            end if
+          end tell
+        end tell
+      end tell
+    `;
+		
+		const result = await runAppleScript(script);
+		
+		// Restore original clipboard content
+		await runAppleScript(`set the clipboard to "${encodedOriginalClipboard}"`);
+		
+		// Process the result
+		let cleanedResult = result
+			.replace(/Regenerate( response)?/g, '')
+			.replace(/Continue generating/g, '')
+			.replace(/▍/g, '')
+			.trim();
+		
+		return cleanedResult;
+	} catch (error) {
+		console.error("Error generating image with ChatGPT:", error);
+		throw new Error(
+			`Failed to generate image with ChatGPT: ${
+				error instanceof Error ? error.message : String(error)
+			}`,
+		);
+	}
+}
+
 // Function to get available conversations
 async function getConversations(): Promise<string[]> {
 	try {
@@ -272,9 +442,9 @@ async function getConversations(): Promise<string[]> {
       end tell
 
       tell application "ChatGPT"
-        -- Activate ChatGPT and give it time to respond
+        -- Activate ChatGPT and give it time to respond (enhanced for M4)
         activate
-        delay 1.5
+        delay 2.5
 
         tell application "System Events"
           tell process "ChatGPT"
@@ -283,7 +453,7 @@ async function getConversations(): Promise<string[]> {
               return "No ChatGPT window found"
             end if
             
-            -- Try to get conversation titles with multiple approaches
+            -- Try to get conversation titles with multiple approaches (M4 enhanced)
             set conversationsList to {}
             
             try
@@ -291,10 +461,14 @@ async function getConversations(): Promise<string[]> {
               if exists group 1 of group 1 of window 1 then
                 set chatButtons to buttons of group 1 of group 1 of window 1
                 repeat with chatButton in chatButtons
-                  set buttonName to name of chatButton
-                  if buttonName is not "New chat" then
-                    set end of conversationsList to buttonName
-                  end if
+                  try
+                    set buttonName to name of chatButton
+                    if buttonName is not "New chat" and buttonName is not "" then
+                      set end of conversationsList to buttonName
+                    end if
+                  on error
+                    -- Skip buttons that can't be accessed
+                  end try
                 end repeat
               end if
               
@@ -310,6 +484,8 @@ async function getConversations(): Promise<string[]> {
                         set end of conversationsList to elemDesc
                       end if
                     end if
+                  on error
+                    -- Skip elements that can't be accessed
                   end try
                 end repeat
               end if
@@ -353,24 +529,28 @@ async function getConversations(): Promise<string[]> {
 }
 
 function isChatGPTArgs(args: unknown): args is {
-	operation: "ask" | "get_conversations";
+	operation: "ask" | "get_conversations" | "generate_image";
 	prompt?: string;
 	conversation_id?: string;
+	image_style?: string;
+	image_size?: string;
 } {
 	if (typeof args !== "object" || args === null) return false;
 
-	const { operation, prompt, conversation_id } = args as any;
+	const { operation, prompt, conversation_id, image_style, image_size } = args as any;
 
-	if (!operation || !["ask", "get_conversations"].includes(operation)) {
+	if (!operation || !["ask", "get_conversations", "generate_image"].includes(operation)) {
 		return false;
 	}
 
 	// Validate required fields based on operation
-	if (operation === "ask" && !prompt) return false;
+	if ((operation === "ask" || operation === "generate_image") && !prompt) return false;
 
 	// Validate field types if present
 	if (prompt && typeof prompt !== "string") return false;
 	if (conversation_id && typeof conversation_id !== "string") return false;
+	if (image_style && typeof image_style !== "string") return false;
+	if (image_size && typeof image_size !== "string") return false;
 
 	return true;
 }
@@ -405,6 +585,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 							{
 								type: "text",
 								text: response || "No response received from ChatGPT.",
+							},
+						],
+						isError: false,
+					};
+				}
+
+				case "generate_image": {
+					if (!args.prompt) {
+						throw new Error("Prompt is required for generate_image operation");
+					}
+
+					const response = await generateImage(
+						args.prompt,
+						args.image_style,
+						args.image_size,
+						args.conversation_id
+					);
+
+					return {
+						content: [
+							{
+								type: "text",
+								text: response || "No response received from ChatGPT image generation.",
 							},
 						],
 						isError: false,
@@ -453,4 +656,4 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 const transport = new StdioServerTransport();
 
 await server.connect(transport);
-console.error("ChatGPT MCP Server running on stdio");
+console.error("ChatGPT MCP Server with Image Generation running on stdio");
