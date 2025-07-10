@@ -1,9 +1,9 @@
 {
   "name": "claude-chatgpt-mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "main": "dist/index.js",
   "type": "module",
-  "description": "A Claude MCP tool to interact with the ChatGPT desktop app on macOS",
+  "description": "A Claude MCP tool to interact with the ChatGPT desktop app on macOS with DALL-E image generation support",
   "author": "Syed Azhar",
   "license": "MIT",
   "bin": {
@@ -11,13 +11,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/syedazharmbnr1/claude-chatgpt-mcp.git"
+    "url": "git+https://github.com/renzellance/claude-chatgpt-mcp.git"
   },
   "keywords": [
     "mcp",
     "claude",
     "chatgpt",
-    "mac"
+    "dalle",
+    "image-generation",
+    "mac",
+    "m4",
+    "ai"
   ],
   "scripts": {
     "dev": "bun run index.ts",
