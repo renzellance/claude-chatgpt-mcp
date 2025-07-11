@@ -8,11 +8,35 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { runAppleScript } from "run-applescript";
 import { run } from "@jxa/run";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+// Enhanced error types for better error handling
+interface ChatGPTError extends Error {
+	code?: string;
+	retryable?: boolean;
+}
+
+// Configuration for retry logic
+const RETRY_CONFIG = {
+	maxRetries: 3,
+	baseDelay: 1000, // 1 second
+	maxDelay: 10000, // 10 seconds
+	backoffFactor: 2,
+};
+
+// Configuration for image handling
+const IMAGE_CONFIG = {
+	downloadPath: path.join(os.homedir(), 'Downloads', 'ChatGPT_Images'),
+	supportedFormats: ['.png', '.jpg', '.jpeg', '.webp'],
+	maxDownloadWaitTime: 30000, // 30 seconds
+};
 
 // Define the ChatGPT tool with enhanced operations
 const CHATGPT_TOOL: Tool = {
 	name: "chatgpt",
-	description: "Interact with the ChatGPT desktop app on macOS including image generation",
+	description: "Interact with the ChatGPT desktop app on macOS including image generation with download and retry logic",
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -39,6 +63,18 @@ const CHATGPT_TOOL: Tool = {
 				type: "string",
 				description: "Size for image generation (e.g., '1024x1024', '1792x1024', '1024x1792')",
 			},
+			max_retries: {
+				type: "number",
+				description: "Maximum number of retries (default: 3)",
+			},
+			download_image: {
+				type: "boolean",
+				description: "Whether to download generated images to file system (default: true for generate_image)",
+			},
+			save_path: {
+				type: "string",
+				description: "Custom path to save downloaded images (optional)",
+			},
 		},
 		required: ["operation"],
 	},
@@ -46,8 +82,8 @@ const CHATGPT_TOOL: Tool = {
 
 const server = new Server(
 	{
-		name: "ChatGPT MCP Tool with Image Generation",
-		version: "1.1.0",
+		name: "ChatGPT MCP Tool with Image Download",
+		version: "1.3.0",
 	},
 	{
 		capabilities: {
@@ -56,604 +92,467 @@ const server = new Server(
 	},
 );
 
-// Check if ChatGPT app is installed and running with M4 compatibility
+// Enhanced error creation with retry logic
+function createChatGPTError(message: string, code?: string, retryable: boolean = true): ChatGPTError {
+	const error = new Error(message) as ChatGPTError;
+	error.code = code;
+	error.retryable = retryable;
+	return error;
+}
+
+// Sleep utility for retry delays
+function sleep(ms: number): Promise<void> {
+	return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Calculate exponential backoff delay
+function calculateDelay(attempt: number, baseDelay: number, maxDelay: number, backoffFactor: number): number {
+	const delay = Math.min(baseDelay * Math.pow(backoffFactor, attempt), maxDelay);
+	// Add jitter to prevent thundering herd
+	return delay + Math.random() * 1000;
+}
+
+// Ensure download directory exists
+function ensureDownloadDirectory(customPath?: string): string {
+	const downloadPath = customPath || IMAGE_CONFIG.downloadPath;
+	
+	try {
+		if (!fs.existsSync(downloadPath)) {
+			fs.mkdirSync(downloadPath, { recursive: true });
+			console.log(`Created download directory: ${downloadPath}`);
+		}
+		return downloadPath;
+	} catch (error) {
+		console.error(`Failed to create download directory: ${error}`);
+		throw createChatGPTError(
+			`Cannot create download directory: ${downloadPath}`,
+			"DIRECTORY_CREATE_FAILED",
+			false
+		);
+	}
+}
+
+// Generate unique filename for downloaded image
+function generateImageFilename(prompt: string, style?: string): string {
+	const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+	const promptSlug = prompt
+		.toLowerCase()
+		.replace(/[^a-z0-9\\s]/g, '')
+		.replace(/\\s+/g, '_')
+		.substring(0, 50);
+	
+	const styleSlug = style ? `_${style.toLowerCase().replace(/[^a-z0-9]/g, '')}` : '';
+	return `chatgpt_${timestamp}_${promptSlug}${styleSlug}.png`;
+}
+
+// Download image from ChatGPT interface
+async function downloadImageFromChatGPT(downloadPath: string, filename: string): Promise<string> {
+	try {
+		const script = `
+			tell application "ChatGPT"
+				activate
+				delay 1
+				
+				tell application "System Events"
+					tell process "ChatGPT"
+						-- Look for images in the conversation
+						set frontWin to front window
+						set allUIElements to entire contents of frontWin
+						set imageElements to {}
+						
+						repeat with e in allUIElements
+							try
+								if (role of e) is "AXImage" then
+									set end of imageElements to e
+								end if
+							on error
+								-- Skip elements that can't be accessed
+							end try
+						end repeat
+						
+						-- If we found images, try to download the most recent one
+						if (count of imageElements) > 0 then
+							set latestImage to item -1 of imageElements
+							
+							-- Right-click on the image to open context menu
+							tell latestImage
+								perform action "AXShowMenu"
+								delay 1
+							end tell
+							
+							-- Look for "Save Image" or "Download" menu item
+							repeat with menuItem in menu items of menu 1 of latestImage
+								try
+									set menuTitle to title of menuItem
+									if menuTitle contains "Save" or menuTitle contains "Download" then
+										click menuItem
+										delay 2
+										exit repeat
+									end if
+								on error
+									-- Skip menu items that can't be accessed
+								end try
+							end repeat
+							
+							-- Handle save dialog
+							delay 2
+							if exists sheet 1 of frontWin then
+								-- Set the filename
+								set value of text field 1 of sheet 1 of frontWin to "${filename}"
+								delay 0.5
+								
+								-- Navigate to download path
+								keystroke "g" using {command down, shift down}
+								delay 1
+								
+								if exists sheet 1 of sheet 1 of frontWin then
+									set value of text field 1 of sheet 1 of sheet 1 of frontWin to "${downloadPath}"
+									delay 0.5
+									click button "Go" of sheet 1 of sheet 1 of frontWin
+									delay 1
+								end if
+								
+								-- Click Save
+								click button "Save" of sheet 1 of frontWin
+								delay 2
+								
+								return "Image download initiated"
+							else
+								return "No save dialog appeared"
+							end if
+						else
+							return "No images found in conversation"
+						end if
+					end tell
+				end tell
+			end tell
+		`;
+		
+		const result = await runAppleScript(script);
+		
+		// Wait for file to appear
+		const fullPath = path.join(downloadPath, filename);
+		const startTime = Date.now();
+		
+		while (Date.now() - startTime < IMAGE_CONFIG.maxDownloadWaitTime) {
+			if (fs.existsSync(fullPath)) {
+				console.log(`Image successfully downloaded: ${fullPath}`);
+				return fullPath;
+			}
+			await sleep(1000);
+		}
+		
+		throw createChatGPTError(
+			"Image download timed out. File may still be downloading.",
+			"DOWNLOAD_TIMEOUT",
+			true
+		);
+		
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("Invalid index")) {
+			throw createChatGPTError(
+				"Cannot access ChatGPT interface for image download",
+				"DOWNLOAD_ACCESS_FAILED",
+				true
+			);
+		}
+		throw error;
+	}
+}
+
+// Enhanced retry wrapper with exponential backoff
+async function withRetry<T>(
+	operation: () => Promise<T>,
+	operationName: string,
+	maxRetries: number = RETRY_CONFIG.maxRetries
+): Promise<T> {
+	let lastError: ChatGPTError;
+
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			console.log(`[${operationName}] Attempt ${attempt + 1}/${maxRetries + 1}`);
+			const result = await operation();
+			if (attempt > 0) {
+				console.log(`[${operationName}] Succeeded on retry ${attempt}`);
+			}
+			return result;
+		} catch (error) {
+			lastError = error as ChatGPTError;
+			
+			// Log the error for debugging
+			console.error(`[${operationName}] Attempt ${attempt + 1} failed:`, {
+				message: lastError.message,
+				code: lastError.code,
+				retryable: lastError.retryable
+			});
+
+			// Don't retry if this is the last attempt or error is not retryable
+			if (attempt === maxRetries || lastError.retryable === false) {
+				break;
+			}
+
+			// Calculate delay and wait before retry
+			const delay = calculateDelay(attempt, RETRY_CONFIG.baseDelay, RETRY_CONFIG.maxDelay, RETRY_CONFIG.backoffFactor);
+			console.log(`[${operationName}] Retrying in ${Math.round(delay)}ms...`);
+			await sleep(delay);
+		}
+	}
+
+	// If we get here, all retries failed
+	throw createChatGPTError(
+		`${operationName} failed after ${maxRetries + 1} attempts. Last error: ${lastError.message}`,
+		lastError.code,
+		false
+	);
+}
+
+// Enhanced ChatGPT access check with better error categorization
 async function checkChatGPTAccess(): Promise<boolean> {
 	try {
 		const isRunning = await runAppleScript(`
-      tell application "System Events"
-        return application process "ChatGPT" exists
-      end tell
-    `);
+			tell application "System Events"
+				return application process "ChatGPT" exists
+			end tell
+		`);
 
 		if (isRunning !== "true") {
 			console.log("ChatGPT app is not running, attempting to launch...");
 			try {
 				await runAppleScript(`
-          tell application "ChatGPT" to activate
-          delay 3
-        `);
+					tell application "ChatGPT" to activate
+					delay 3
+				`);
 			} catch (activateError) {
 				console.error("Error activating ChatGPT app:", activateError);
-				throw new Error(
+				throw createChatGPTError(
 					"Could not activate ChatGPT app. Please start it manually.",
+					"ACTIVATION_FAILED",
+					false // Not retryable - user intervention needed
 				);
 			}
 		}
 
+		// Additional check to ensure window is available
+		try {
+			await runAppleScript(`
+				tell application "System Events"
+					tell process "ChatGPT"
+						if not (exists window 1) then
+							error "No ChatGPT window found"
+						end if
+					end tell
+				end tell
+			`);
+		} catch (windowError) {
+			throw createChatGPTError(
+				"ChatGPT is running but no window is available. Please ensure ChatGPT is fully loaded.",
+				"NO_WINDOW",
+				true // Retryable - might just need more time
+			);
+		}
+
 		return true;
 	} catch (error) {
+		if ((error as ChatGPTError).code) {
+			throw error; // Re-throw our custom errors
+		}
+		
+		// Handle accessibility permission errors
+		if (error instanceof Error && error.message.includes("Invalid index")) {
+			throw createChatGPTError(
+				"Cannot access ChatGPT interface. Please ensure Accessibility permissions are granted to Terminal/iTerm in System Preferences > Privacy & Security > Accessibility.",
+				"ACCESSIBILITY_DENIED",
+				false // Not retryable - user needs to fix permissions
+			);
+		}
+		
 		console.error("ChatGPT access check failed:", error);
-		throw new Error(
-			`Cannot access ChatGPT app. Please make sure ChatGPT is installed and properly configured. Error: ${error instanceof Error ? error.message : String(error)}`,
+		throw createChatGPTError(
+			`Cannot access ChatGPT app: ${error instanceof Error ? error.message : String(error)}`,
+			"ACCESS_FAILED",
+			true // Retryable by default
 		);
 	}
 }
 
-// Function to send a prompt to ChatGPT
+// Enhanced function to send a prompt to ChatGPT with better error handling
 async function askChatGPT(
 	prompt: string,
 	conversationId?: string,
 ): Promise<string> {
-	await checkChatGPTAccess();
-	try {
-		// Function to properly encode text for AppleScript, including handling of Chinese characters
+	return withRetry(async () => {
+		await checkChatGPTAccess();
+		
+		// Function to properly encode text for AppleScript
 		const encodeForAppleScript = (text: string): string => {
-			// Only escape double quotes, leave other characters as is
-			return text.replace(/"/g, '\\"');
+			return text.replace(/\\"/g, '\\\\"');
 		};
 
 		const encodedPrompt = encodeForAppleScript(prompt);
 		
 		// Save original clipboard content
-		const saveClipboardScript = `
-			set savedClipboard to the clipboard
-			return savedClipboard
-		`;
-		const originalClipboard = await runAppleScript(saveClipboardScript);
+		let originalClipboard = "";
+		try {
+			originalClipboard = await runAppleScript(`
+				set savedClipboard to the clipboard
+				return savedClipboard
+			`);
+		} catch (clipboardError) {
+			console.warn("Could not save clipboard content:", clipboardError);
+		}
+		
 		const encodedOriginalClipboard = encodeForAppleScript(originalClipboard);
 		
-		const script = `
-      tell application "ChatGPT"
-        activate
-        delay 2
-        tell application "System Events"
-          tell process "ChatGPT"
-            ${
-				conversationId
-					? `
-              try
-                click button "${conversationId}" of group 1 of group 1 of window 1
-                delay 1
-              end try
-            `
-					: ""
-			}
-            -- Clear any existing text in the input field
-            keystroke "a" using {command down}
-            keystroke (ASCII character 8) -- Delete key
-            delay 0.5
-            
-            -- Set the clipboard to the prompt text
-            set the clipboard to "${encodedPrompt}"
-            
-            -- Paste the prompt and send it
-            keystroke "v" using {command down}
-            delay 0.5
-            keystroke return
-            
-            -- Wait for the response with dynamic detection (enhanced for M4)
-            set maxWaitTime to 180 -- Increased wait time for M4 compatibility
-            set waitInterval to 1 -- Check interval in seconds
-            set totalWaitTime to 0
-            set previousText to ""
-            set stableCount to 0
-            set requiredStableChecks to 4 -- Increased stable checks for M4
-            
-            repeat while totalWaitTime < maxWaitTime
-              delay waitInterval
-              set totalWaitTime to totalWaitTime + waitInterval
-              
-              -- Get current text with enhanced error handling
-              set frontWin to front window
-              set allUIElements to entire contents of frontWin
-              set conversationText to {}
-              repeat with e in allUIElements
-                try
-                  if (role of e) is "AXStaticText" then
-                    set end of conversationText to (description of e)
-                  end if
-                on error
-                  -- Silently continue if element access fails
-                end try
-              end repeat
-              
-              set AppleScript's text item delimiters to linefeed
-              set currentText to conversationText as text
-              
-              -- Check if text has stabilized (not changing anymore)
-              if currentText is equal to previousText then
-                set stableCount to stableCount + 1
-                if stableCount ≥ requiredStableChecks then
-                  -- Text has been stable for multiple checks, assume response is complete
-                  exit repeat
-                end if
-              else
-                -- Text changed, reset stable count
-                set stableCount to 0
-                set previousText to currentText
-              end if
-              
-              -- Check for response completion indicators
-              if currentText contains "▍" then
-                -- ChatGPT is still typing (blinking cursor indicator)
-                set stableCount to 0
-              else if currentText contains "Regenerate" or currentText contains "Continue generating" then
-                -- Response likely complete if these UI elements are visible
-                set stableCount to stableCount + 1
-              end if
-            end repeat
-            
-            -- Final check for text content
-            if (count of conversationText) = 0 then
-              return "No response text found. ChatGPT may still be processing or encountered an error."
-            else
-              -- Extract just the latest response
-              set responseText to ""
-              try
-                -- Attempt to find the latest response by looking for patterns
-                set AppleScript's text item delimiters to linefeed
-                set fullText to conversationText as text
-                
-                -- Look for the prompt in the text to find where the response starts
-                set promptPattern to "${prompt.replace(/"/g, '\\"').replace(/\n/g, ' ')}"
-                if fullText contains promptPattern then
-                  set promptPos to offset of promptPattern in fullText
-                  if promptPos > 0 then
-                    -- Get text after the prompt
-                    set responseText to text from (promptPos + (length of promptPattern)) to end of fullText
-                  end if
-                end if
-                
-                -- If we couldn't find the prompt, return the full text
-                if responseText is "" then
-                  set responseText to fullText
-                end if
-                
-                return responseText
-              on error
-                -- Fallback to returning all text if parsing fails
-                return conversationText as text
-              end try
-            end if
-          end tell
-        end tell
-      end tell
-    `;
-		const result = await runAppleScript(script);
-		
-		// Restore original clipboard content
-		await runAppleScript(`set the clipboard to "${encodedOriginalClipboard}"`);
-		
-		// Post-process the result to clean up any UI text that might have been captured
-		let cleanedResult = result
-			.replace(/Regenerate( response)?/g, '')
-			.replace(/Continue generating/g, '')
-			.replace(/▍/g, '')
-			.trim();
+		try {
+			const script = `
+				tell application "ChatGPT"
+					activate
+					delay 2
+					tell application "System Events"
+						tell process "ChatGPT"
+							${conversationId ? `
+								try
+									click button "${conversationId}" of group 1 of group 1 of window 1
+									delay 1
+								end try
+							` : ""}
+							
+							-- Clear any existing text in the input field
+							keystroke "a" using {command down}
+							keystroke (ASCII character 8) -- Delete key
+							delay 0.5
+							
+							-- Set the clipboard to the prompt text
+							set the clipboard to "${encodedPrompt}"
+							
+							-- Paste the prompt and send it
+							keystroke "v" using {command down}
+							delay 0.5
+							keystroke return
+							
+							-- Wait for the response with enhanced detection
+							set maxWaitTime to 180
+							set waitInterval to 1
+							set totalWaitTime to 0
+							set previousText to ""
+							set stableCount to 0
+							set requiredStableChecks to 4
+							
+							repeat while totalWaitTime < maxWaitTime
+								delay waitInterval
+								set totalWaitTime to totalWaitTime + waitInterval
+								
+								-- Get current text with enhanced error handling
+								set frontWin to front window
+								set allUIElements to entire contents of frontWin
+								set conversationText to {}
+								repeat with e in allUIElements
+									try
+										if (role of e) is "AXStaticText" then
+											set end of conversationText to (description of e)
+										end if
+									on error
+										-- Silently continue if element access fails
+									end try
+								end repeat
+								
+								set AppleScript's text item delimiters to linefeed
+								set currentText to conversationText as text
+								
+								-- Check if text has stabilized
+								if currentText is equal to previousText then
+									set stableCount to stableCount + 1
+									if stableCount ≥ requiredStableChecks then
+										exit repeat
+									end if
+								else
+									set stableCount to 0
+									set previousText to currentText
+								end if
+								
+								-- Check for response completion indicators
+								if currentText contains "▍" then
+									set stableCount to 0
+								else if currentText contains "Regenerate" or currentText contains "Continue generating" then
+									set stableCount to stableCount + 1
+								end if
+							end repeat
+							
+							-- Return the response
+							if (count of conversationText) = 0 then
+								error "No response text found. ChatGPT may still be processing."
+							else
+								set AppleScript's text item delimiters to linefeed
+								set fullText to conversationText as text
+								
+								-- Try to extract just the latest response
+								set responseText to ""
+								set promptPattern to "${prompt.replace(/"/g, '\\\\"').replace(/\\n/g, ' ')}"
+								if fullText contains promptPattern then
+									set promptPos to offset of promptPattern in fullText
+									if promptPos > 0 then
+										set responseText to text from (promptPos + (length of promptPattern)) to end of fullText
+									end if
+								end if
+								
+								if responseText is "" then
+									set responseText to fullText
+								end if
+								
+								return responseText
+							end if
+						end tell
+					end tell
+				end tell
+			`;
 			
-		// More context-aware incomplete response detection
-		const isLikelyComplete = 
-			cleanedResult.length > 50 || // Longer responses are likely complete
-			cleanedResult.endsWith('.') || 
-			cleanedResult.endsWith('!') || 
-			cleanedResult.endsWith('?') ||
-			cleanedResult.endsWith(':') ||
-			cleanedResult.endsWith(')') ||
-			cleanedResult.endsWith('}') ||
-			cleanedResult.endsWith(']') ||
-			cleanedResult.includes('\n\n') || // Multiple paragraphs suggest completeness
-			/^[A-Z].*[.!?]$/.test(cleanedResult); // Complete sentence structure
+			const result = await runAppleScript(script);
 			
-		if (cleanedResult.length > 0 && !isLikelyComplete) {
-			console.warn("Warning: ChatGPT response may be incomplete");
-		}
-		
-		return cleanedResult;
-	} catch (error) {
-		console.error("Error interacting with ChatGPT:", error);
-		throw new Error(
-			`Failed to get response from ChatGPT: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-	}
-}
-
-// Function to generate images using ChatGPT's DALL-E integration
-async function generateImage(
-	prompt: string,
-	style?: string,
-	size?: string,
-	conversationId?: string,
-): Promise<string> {
-	await checkChatGPTAccess();
-	try {
-		// Construct the image generation prompt
-		let imagePrompt = prompt;
-		
-		// Add style if specified
-		if (style) {
-			imagePrompt += ` in ${style} style`;
-		}
-		
-		// Add size preference if specified
-		if (size) {
-			imagePrompt += ` (${size})`;
-		}
-		
-		// Prefix with DALL-E instruction
-		const fullPrompt = `Please generate an image using DALL-E: ${imagePrompt}`;
-		
-		const encodeForAppleScript = (text: string): string => {
-			return text.replace(/"/g, '\\"');
-		};
-
-		const encodedPrompt = encodeForAppleScript(fullPrompt);
-		
-		// Save original clipboard content
-		const saveClipboardScript = `
-			set savedClipboard to the clipboard
-			return savedClipboard
-		`;
-		const originalClipboard = await runAppleScript(saveClipboardScript);
-		const encodedOriginalClipboard = encodeForAppleScript(originalClipboard);
-		
-		const script = `
-      tell application "ChatGPT"
-        activate
-        delay 2
-        tell application "System Events"
-          tell process "ChatGPT"
-            ${
-				conversationId
-					? `
-              try
-                click button "${conversationId}" of group 1 of group 1 of window 1
-                delay 1
-              end try
-            `
-					: ""
-			}
-            -- Clear any existing text in the input field
-            keystroke "a" using {command down}
-            keystroke (ASCII character 8) -- Delete key
-            delay 0.5
-            
-            -- Set the clipboard to the prompt text
-            set the clipboard to "${encodedPrompt}"
-            
-            -- Paste the prompt and send it
-            keystroke "v" using {command down}
-            delay 0.5
-            keystroke return
-            
-            -- Wait longer for image generation (can take much longer than text)
-            set maxWaitTime to 300 -- 5 minutes for image generation
-            set waitInterval to 2 -- Check every 2 seconds for images
-            set totalWaitTime to 0
-            set previousText to ""
-            set stableCount to 0
-            set requiredStableChecks to 5 -- More stable checks for image generation
-            
-            repeat while totalWaitTime < maxWaitTime
-              delay waitInterval
-              set totalWaitTime to totalWaitTime + waitInterval
-              
-              -- Get current text and check for image indicators
-              set frontWin to front window
-              set allUIElements to entire contents of frontWin
-              set conversationText to {}
-              set hasImage to false
-              
-              repeat with e in allUIElements
-                try
-                  if (role of e) is "AXStaticText" then
-                    set end of conversationText to (description of e)
-                  else if (role of e) is "AXImage" then
-                    set hasImage to true
-                  end if
-                on error
-                  -- Silently continue if element access fails
-                end try
-              end repeat
-              
-              set AppleScript's text item delimiters to linefeed
-              set currentText to conversationText as text
-              
-              -- Check for image generation completion
-              if hasImage and (currentText contains "I've generated" or currentText contains "Here's the image" or currentText contains "I've created") then
-                -- Image appears to be generated
-                exit repeat
-              end if
-              
-              -- Check if text has stabilized
-              if currentText is equal to previousText then
-                set stableCount to stableCount + 1
-                if stableCount ≥ requiredStableChecks then
-                  exit repeat
-                end if
-              else
-                set stableCount to 0
-                set previousText to currentText
-              end if
-              
-              -- Check for generation indicators
-              if currentText contains "▍" or currentText contains "Generating" or currentText contains "Creating" then
-                set stableCount to 0
-              end if
-            end repeat
-            
-            -- Return response indicating image generation status
-            if (count of conversationText) = 0 then
-              return "No response found. Image generation may still be processing."
-            else
-              set AppleScript's text item delimiters to linefeed
-              set fullText to conversationText as text
-              return fullText
-            end if
-          end tell
-        end tell
-      end tell
-    `;
-		
-		const result = await runAppleScript(script);
-		
-		// Restore original clipboard content
-		await runAppleScript(`set the clipboard to "${encodedOriginalClipboard}"`);
-		
-		// Process the result
-		let cleanedResult = result
-			.replace(/Regenerate( response)?/g, '')
-			.replace(/Continue generating/g, '')
-			.replace(/▍/g, '')
-			.trim();
-		
-		return cleanedResult;
-	} catch (error) {
-		console.error("Error generating image with ChatGPT:", error);
-		throw new Error(
-			`Failed to generate image with ChatGPT: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-	}
-}
-
-// Function to get available conversations
-async function getConversations(): Promise<string[]> {
-	try {
-		// Run AppleScript to get conversations from ChatGPT app
-		const result = await runAppleScript(`
-      -- Check if ChatGPT is running
-      tell application "System Events"
-        if not (application process "ChatGPT" exists) then
-          return "ChatGPT is not running"
-        end if
-      end tell
-
-      tell application "ChatGPT"
-        -- Activate ChatGPT and give it time to respond (enhanced for M4)
-        activate
-        delay 2.5
-
-        tell application "System Events"
-          tell process "ChatGPT"
-            -- Check if ChatGPT window exists
-            if not (exists window 1) then
-              return "No ChatGPT window found"
-            end if
-            
-            -- Try to get conversation titles with multiple approaches (M4 enhanced)
-            set conversationsList to {}
-            
-            try
-              -- First attempt: try buttons in group 1 of group 1
-              if exists group 1 of group 1 of window 1 then
-                set chatButtons to buttons of group 1 of group 1 of window 1
-                repeat with chatButton in chatButtons
-                  try
-                    set buttonName to name of chatButton
-                    if buttonName is not "New chat" and buttonName is not "" then
-                      set end of conversationsList to buttonName
-                    end if
-                  on error
-                    -- Skip buttons that can't be accessed
-                  end try
-                end repeat
-              end if
-              
-              -- If we didn't find any conversations, try an alternative approach
-              if (count of conversationsList) is 0 then
-                -- Try to find UI elements by accessibility description
-                set uiElements to UI elements of window 1
-                repeat with elem in uiElements
-                  try
-                    if exists (attribute "AXDescription" of elem) then
-                      set elemDesc to value of attribute "AXDescription" of elem
-                      if elemDesc is not "New chat" and elemDesc is not "" then
-                        set end of conversationsList to elemDesc
-                      end if
-                    end if
-                  on error
-                    -- Skip elements that can't be accessed
-                  end try
-                end repeat
-              end if
-              
-              -- If still no conversations found, return a specific message
-              if (count of conversationsList) is 0 then
-                return "No conversations found"
-              end if
-            on error errMsg
-              -- Return error message for debugging
-              return "Error: " & errMsg
-            end try
-            
-            return conversationsList
-          end tell
-        end tell
-      end tell
-    `);
-
-		// Parse the AppleScript result into an array
-		if (result === "ChatGPT is not running") {
-			console.error("ChatGPT application is not running");
-			throw new Error("ChatGPT application is not running");
-		} else if (result === "No ChatGPT window found") {
-			console.error("No ChatGPT window found");
-			throw new Error("No ChatGPT window found");
-		} else if (result === "No conversations found") {
-			console.error("No conversations found in ChatGPT");
-			return []; // Return empty array instead of error message
-		} else if (result.startsWith("Error:")) {
-			console.error(result);
-			throw new Error(result);
-		}
-		
-		const conversations = result.split(", ");
-		return conversations;
-	} catch (error) {
-		console.error("Error getting ChatGPT conversations:", error);
-		throw new Error("Error retrieving conversations: " + (error instanceof Error ? error.message : String(error)));
-	}
-}
-
-function isChatGPTArgs(args: unknown): args is {
-	operation: "ask" | "get_conversations" | "generate_image";
-	prompt?: string;
-	conversation_id?: string;
-	image_style?: string;
-	image_size?: string;
-} {
-	if (typeof args !== "object" || args === null) return false;
-
-	const { operation, prompt, conversation_id, image_style, image_size } = args as any;
-
-	if (!operation || !["ask", "get_conversations", "generate_image"].includes(operation)) {
-		return false;
-	}
-
-	// Validate required fields based on operation
-	if ((operation === "ask" || operation === "generate_image") && !prompt) return false;
-
-	// Validate field types if present
-	if (prompt && typeof prompt !== "string") return false;
-	if (conversation_id && typeof conversation_id !== "string") return false;
-	if (image_style && typeof image_style !== "string") return false;
-	if (image_size && typeof image_size !== "string") return false;
-
-	return true;
-}
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-	tools: [CHATGPT_TOOL],
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-	try {
-		const { name, arguments: args } = request.params;
-
-		if (!args) {
-			throw new Error("No arguments provided");
-		}
-
-		if (name === "chatgpt") {
-			if (!isChatGPTArgs(args)) {
-				throw new Error("Invalid arguments for ChatGPT tool");
-			}
-
-			switch (args.operation) {
-				case "ask": {
-					if (!args.prompt) {
-						throw new Error("Prompt is required for ask operation");
-					}
-
-					const response = await askChatGPT(args.prompt, args.conversation_id);
-
-					return {
-						content: [
-							{
-								type: "text",
-								text: response || "No response received from ChatGPT.",
-							},
-						],
-						isError: false,
-					};
+			// Restore original clipboard content
+			if (originalClipboard) {
+				try {
+					await runAppleScript(`set the clipboard to "${encodedOriginalClipboard}"`);
+				} catch (restoreError) {
+					console.warn("Could not restore clipboard content:", restoreError);
 				}
-
-				case "generate_image": {
-					if (!args.prompt) {
-						throw new Error("Prompt is required for generate_image operation");
-					}
-
-					const response = await generateImage(
-						args.prompt,
-						args.image_style,
-						args.image_size,
-						args.conversation_id
-					);
-
-					return {
-						content: [
-							{
-								type: "text",
-								text: response || "No response received from ChatGPT image generation.",
-							},
-						],
-						isError: false,
-					};
-				}
-
-				case "get_conversations": {
-					const conversations = await getConversations();
-
-					return {
-						content: [
-							{
-								type: "text",
-								text:
-									conversations.length > 0
-										? `Found ${conversations.length} conversation(s):\n\n${conversations.join("\n")}`
-										: "No conversations found in ChatGPT.",
-							},
-						],
-						isError: false,
-					};
-				}
-
-				default:
-					throw new Error(`Unknown operation: ${args.operation}`);
 			}
+			
+			// Post-process the result
+			let cleanedResult = result
+				.replace(/Regenerate( response)?/g, '')
+				.replace(/Continue generating/g, '')
+				.replace(/▍/g, '')
+				.trim();
+			
+			if (!cleanedResult) {
+				throw createChatGPTError(
+					"Received empty response from ChatGPT",
+					"EMPTY_RESPONSE",
+					true
+				);
+			}
+			
+			return cleanedResult;
+			
+		} catch (error) {
+			// Restore clipboard on error
+			if (originalClipboard) {
+				try {
+					await runAppleScript(`set the clipboard to "${encodedOriginalClipboard}"`);
+				} catch (restoreError) {
+					console.warn("Could not restore clipboard content after error:", restoreError);
+				}
+			}
+			
+			if (error instanceof Error && error.message.includes("Invalid index")) {
+				throw createChatGPTError(
+					"Lost connection to ChatGPT interface. The app may have been closed or changed.",
+					"CONNECTION_LOST",
+					true
+				);
+			}
+			
+			throw error;
 		}
-
-		return {
-			content: [{ type: "text", text: `Unknown tool: ${name}` }],
-			isError: true,
-		};
-	} catch (error) {
-		return {
-			content: [
-				{
-					type: "text",
-					text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-				},
-			],
-			isError: true,
-		};
-	}
-});
-
-const transport = new StdioServerTransport();
-
-await server.connect(transport);
-console.error("ChatGPT MCP Server with Image Generation running on stdio");
+	}, "askChatGPT");
+}
