@@ -1,9 +1,8 @@
 {
   "name": "claude-chatgpt-mcp",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "main": "index.js",
-  "type": "module",
-  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with robust image generation and download support",
+  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with robust image generation support",
   "author": "Syed Azhar",
   "license": "MIT",
   "bin": {
@@ -19,40 +18,21 @@
     "chatgpt",
     "dalle",
     "image-generation",
-    "image-download",
     "mac",
-    "m4",
     "ai",
-    "enhanced",
-    "robust"
+    "enhanced"
   ],
   "scripts": {
-    "dev": "bun run src/index.ts",
-    "build": "tsc",
-    "prepare": "npm run build",
     "start": "node index.js",
-    "clean": "rm -rf dist",
-    "test": "echo \"Tests not implemented yet\" && exit 0",
-    "lint": "echo \"Linting not configured yet\" && exit 0"
+    "test": "echo \"Tests not implemented yet\" && exit 0"
   },
   "dependencies": {
-    "@jxa/global-type": "^1.3.6",
-    "@jxa/run": "^1.3.6",
     "@modelcontextprotocol/sdk": "^1.5.0",
     "run-applescript": "^7.0.0"
   },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/node": "^22.13.4",
-    "typescript": "^5.4.2"
-  },
   "files": [
     "index.js",
-    "src",
-    "dist",
-    "README.md",
-    "CHANGELOG.md",
-    "tsconfig.json"
+    "README.md"
   ],
   "engines": {
     "node": ">=18"
