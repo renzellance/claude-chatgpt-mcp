@@ -1,13 +1,13 @@
 {
   "name": "claude-chatgpt-mcp",
-  "version": "2.0.0",
-  "main": "dist/index.js",
+  "version": "2.0.1",
+  "main": "index.js",
   "type": "module",
   "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with robust image generation and download support",
   "author": "Syed Azhar",
   "license": "MIT",
   "bin": {
-    "claude-chatgpt-mcp": "dist/index.js"
+    "claude-chatgpt-mcp": "index.js"
   },
   "repository": {
     "type": "git",
@@ -30,7 +30,7 @@
     "dev": "bun run src/index.ts",
     "build": "tsc",
     "prepare": "npm run build",
-    "start": "node dist/index.js",
+    "start": "node index.js",
     "clean": "rm -rf dist",
     "test": "echo \"Tests not implemented yet\" && exit 0",
     "lint": "echo \"Linting not configured yet\" && exit 0"
@@ -47,9 +47,12 @@
     "typescript": "^5.4.2"
   },
   "files": [
+    "index.js",
+    "src",
     "dist",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "tsconfig.json"
   ],
   "engines": {
     "node": ">=18"
