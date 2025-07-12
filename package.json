@@ -1,8 +1,8 @@
 {
   "name": "claude-chatgpt-mcp",
-  "version": "2.1.0",
+  "version": "2.0.0",
   "main": "index.js",
-  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with robust image generation support",
+  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with async image generation support",
   "author": "Syed Azhar",
   "license": "MIT",
   "bin": {
@@ -18,6 +18,8 @@
     "chatgpt",
     "dalle",
     "image-generation",
+    "async",
+    "batch-processing",
     "mac",
     "ai",
     "enhanced"
@@ -28,7 +30,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.5.0",
-    "run-applescript": "^7.0.0"
+    "run-applescript": "^7.0.0",
+    "uuid": "^10.0.0"
   },
   "files": [
     "index.js",
