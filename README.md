@@ -1,30 +1,47 @@
-# Claude ChatGPT MCP Tool with Image Generation
+# Enhanced ChatGPT MCP Tool with Robust Image Download
 
-This is a Model Context Protocol (MCP) tool that allows Claude to interact with the ChatGPT desktop app on macOS, including DALL-E image generation capabilities.
+A comprehensive Model Context Protocol (MCP) tool that enables Claude to interact seamlessly with the ChatGPT desktop app on macOS, featuring robust DALL-E image generation with actual file download capabilities.
 
-## Features
+## 🚀 What's New in Version 2.0
 
-- Ask ChatGPT questions directly from Claude
-- **Generate images using DALL-E through ChatGPT Plus**
-- View ChatGPT conversation history
-- Continue existing ChatGPT conversations
-- **Enhanced M4 Mac compatibility**
+- **🎯 Actual Image Downloads**: Downloads real image files (not just text descriptions)
+- **🔄 Multiple Download Strategies**: Context menu, keyboard shortcuts, and fallback methods
+- **⚡ Enhanced Error Handling**: Smart retry logic with exponential backoff
+- **🏗️ Modular Architecture**: Clean, maintainable code structure
+- **🧹 Auto-Cleanup**: Configurable file cleanup and resource management
+- **🛡️ Robust UI Handling**: Multiple fallbacks for ChatGPT UI changes
+- **📁 Generic Naming**: Business-agnostic folder structure
 
-## Prerequisites
+## ✨ Features
 
-- macOS with Apple Silicon chip (M1/M2/M3/**M4** supported)
-- [ChatGPT desktop app](https://chatgpt.com/download) installed
+### Core Functionality
+- **Text Conversations**: Ask ChatGPT questions directly from Claude
+- **Image Generation**: Generate images using DALL-E through ChatGPT Plus
+- **File Downloads**: Actually download generated images to your file system
+- **Conversation Management**: View and continue existing ChatGPT conversations
+- **Enhanced M4 Mac Support**: Optimized for all Apple Silicon chips
+
+### Advanced Capabilities
+- **Multiple Download Methods**: Tries various approaches to ensure successful downloads
+- **Smart Retry Logic**: Exponential backoff with configurable retry attempts
+- **Error Recovery**: Detailed error messages with solution steps
+- **Resource Management**: Automatic cleanup and directory size management
+- **File Verification**: Ensures complete downloads before reporting success
+- **Fallback Detection**: Finds recently created images if direct download fails
+
+## 📋 Prerequisites
+
+- **macOS** with Apple Silicon chip (M1/M2/M3/M4 supported)
+- **[ChatGPT desktop app](https://chatgpt.com/download)** installed
 - **ChatGPT Plus subscription** (required for DALL-E image generation)
-- [Bun](https://bun.sh/) installed
-- [Claude desktop app](https://claude.ai/desktop) installed
+- **[Bun](https://bun.sh/)** installed
+- **[Claude desktop app](https://claude.ai/desktop)** installed
 
-## Installation
+## 🚀 Installation
 
 ### NPX Installation (Recommended)
 
-You can use NPX to run this tool without cloning the repository:
-
-1. **Install and run the package using NPX:**
+1. **Install and run using NPX:**
 
 ```bash
 npx claude-chatgpt-mcp
@@ -32,7 +49,7 @@ npx claude-chatgpt-mcp
 
 2. **Configure Claude Desktop:**
 
-Edit your `claude_desktop_config.json` file (located at `~/Library/Application Support/Claude/claude_desktop_config.json`) to include this tool:
+Edit your `claude_desktop_config.json` file (located at `~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
 {
@@ -45,196 +62,212 @@ Edit your `claude_desktop_config.json` file (located at `~/Library/Application S
 }
 ```
 
-3. **Restart the Claude Desktop app**
+3. **Restart Claude Desktop app**
 
-4. **Grant necessary permissions:**
+4. **Grant permissions:**
    - Go to System Preferences > Privacy & Security > Privacy
    - Give Terminal (or iTerm) access to Accessibility features
-   - You may see permission prompts when the tool is first used
 
 ### Manual Installation
 
-1. Clone this repository:
+1. **Clone this repository:**
 
 ```bash
 git clone https://github.com/renzellance/claude-chatgpt-mcp.git
 cd claude-chatgpt-mcp
 ```
 
-2. Install dependencies:
+2. **Install dependencies:**
 
 ```bash
 bun install
 ```
 
-3. Build the project:
+3. **Build the project:**
 
 ```bash
 bun run build
 ```
 
-4. Update your Claude Desktop configuration:
-
-Edit your `claude_desktop_config.json` file (located at `~/Library/Application Support/Claude/claude_desktop_config.json`) to include this tool:
+4. **Update Claude Desktop configuration:**
 
 ```json
 {
   "mcpServers": {
     "chatgpt-mcp": {
       "command": "/Users/YOURUSERNAME/.bun/bin/bun",
-      "args": ["run", "/path/to/claude-chatgpt-mcp/index.ts"]
+      "args": ["run", "/path/to/claude-chatgpt-mcp/dist/index.js"]
     }
   }
 }
 ```
 
-Make sure to replace `YOURUSERNAME` with your actual macOS username and adjust the path to where you cloned this repository.
+5. **Restart Claude Desktop app**
 
-5. Restart Claude Desktop app
-
-6. Grant permissions:
-   - Go to System Preferences > Privacy & Security > Privacy
-   - Give Terminal (or iTerm) access to Accessibility features
-   - You may see permission prompts when the tool is first used
-
-## Usage
-
-Once installed, you can use the ChatGPT tool directly from Claude by asking questions like:
+## 💡 Usage Examples
 
 ### Text Generation
-- "Can you ask ChatGPT what the capital of France is?"
-- "Show me my recent ChatGPT conversations"
-- "Ask ChatGPT to explain quantum computing"
+```
+"Can you ask ChatGPT what the capital of France is?"
+"Show me my recent ChatGPT conversations"
+"Ask ChatGPT to explain quantum computing"
+```
 
-### Image Generation (NEW!)
-- "Generate an image of a peaceful meditation scene in cartoon style"
-- "Create a sticker design of a cute plant with 'Stay Planted' text"
-- "Generate a realistic landscape image at 1792x1024 size"
+### Image Generation with Download
+```
+"Generate an image of a peaceful meditation scene in cartoon style"
+"Create a logo design for a tech startup with modern aesthetics"
+"Generate a realistic landscape image at 1792x1024 size"
+```
 
-### Advanced Usage Examples
+### Advanced Operations
+```
+"Generate an image in watercolor style and save it to ~/Desktop"
+"Create an abstract art piece and clean up the file after processing"
+"Generate a minimalist design and don't auto-download the file"
+```
 
-#### Text Operations
+## 🔧 Advanced Configuration
+
+### Image Generation Options
+
 ```javascript
-// Basic question
 {
-  "operation": "ask",
-  "prompt": "What are the best practices for sustainable gardening?"
-}
-
-// Continue specific conversation
-{
-  "operation": "ask",
-  "prompt": "Can you elaborate on composting techniques?",
-  "conversation_id": "your-conversation-id"
+  "operation": "generate_image",
+  "prompt": "A serene mountain landscape",
+  "image_style": "realistic",        // Style: realistic, cartoon, abstract, etc.
+  "image_size": "1024x1024",         // Size: 1024x1024, 1792x1024, 1024x1792
+  "download_image": true,             // Download to file system
+  "save_path": "/custom/path",        // Custom save location
+  "cleanup_after": false,             // Auto-cleanup after processing
+  "max_retries": 5                   // Override default retry attempts
 }
 ```
 
-#### Image Generation Operations
-```javascript
-// Basic image generation
-{
-  "operation": "generate_image",
-  "prompt": "A minimalist botanical illustration of sage plants"
-}
+### File Management
 
-// Styled image generation
-{
-  "operation": "generate_image",
-  "prompt": "Mindfulness meditation scene",
-  "image_style": "watercolor",
-  "image_size": "1024x1024"
-}
+- **Default Location**: `~/Downloads/ChatGPT_MCP_Images/`
+- **Naming Convention**: `chatgpt_TIMESTAMP_PROMPT_STYLE.png`
+- **Auto-Cleanup**: Configurable cleanup based on age, size, and count
+- **Conflict Resolution**: Automatic filename increments for duplicates
 
-// Generate in specific conversation
-{
-  "operation": "generate_image",
-  "prompt": "Logo design for wellness brand",
-  "image_style": "minimalist",
-  "conversation_id": "your-conversation-id"
+## 🛠️ Architecture
+
+### Modular Design
+
+```
+src/
+├── core/              # Core types and configuration
+├── services/          # Business logic (ChatGPT, image download)
+├── utils/             # Utilities (retry, errors, file system)
+├── handlers/          # MCP request handlers
+└── index.ts           # Main entry point
+```
+
+### Key Components
+
+- **Error Handling**: Categorized errors with recovery strategies
+- **Retry Logic**: Exponential backoff with smart retry decisions
+- **File System**: Robust file operations with cleanup management
+- **AppleScript**: Safe execution with clipboard management
+- **Image Download**: Multiple strategies with verification
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### Permission Problems
+```
+Error: Cannot access ChatGPT interface
+```
+**Solution:**
+1. Open System Preferences > Privacy & Security > Accessibility
+2. Add Terminal (or iTerm) to the list
+3. Enable the checkbox
+4. Restart Claude Desktop
+
+#### App Not Running
+```
+Error: ChatGPT application is not running
+```
+**Solution:**
+1. Start the ChatGPT desktop app
+2. Ensure you're logged in
+3. Wait for full app loading
+
+#### Image Download Issues
+```
+Error: No images found in conversation
+```
+**Solution:**
+1. Ensure ChatGPT Plus subscription is active
+2. Generate an image first before attempting download
+3. Wait for image generation to complete
+
+#### M4 Mac Specific
+- Ensure ChatGPT app is running natively (not under Rosetta)
+- Update to latest macOS version
+- Try restarting both apps if issues persist
+
+### Debug Mode
+
+For detailed logging, modify the config:
+
+```typescript
+// In src/core/config.ts
+logging: {
+  level: 'debug',
+  verbose: true
 }
 ```
 
-## M4 Mac Compatibility
+## 🔒 Security & Privacy
 
-This version includes specific enhancements for M4 Mac compatibility:
+- **Minimal Permissions**: Uses only necessary AppleScript commands
+- **Clipboard Safety**: Automatically saves and restores clipboard content
+- **No Data Collection**: All operations are local to your machine
+- **File Cleanup**: Optional automatic cleanup of downloaded files
+- **Error Handling**: No sensitive information in error messages
 
-- **Increased wait times** for better stability on M4 processors
-- **Enhanced error handling** for accessibility features
-- **Improved UI element detection** that works across different Mac architectures
-- **More robust AppleScript execution** with better fallback mechanisms
+## 🚀 Performance Optimizations
 
-If you're using an M4 Mac and experiencing issues, please:
-1. Ensure ChatGPT desktop app is fully updated
-2. Grant all required accessibility permissions
-3. Try restarting both Claude Desktop and ChatGPT apps
-4. Check the console output for detailed error messages
+- **Smart Caching**: Reduces redundant operations
+- **Efficient Retries**: Exponential backoff prevents system overload
+- **Resource Management**: Automatic cleanup prevents disk space issues
+- **Optimized Scripts**: Minimal AppleScript execution time
+- **Background Operations**: Non-blocking cleanup and maintenance
 
-## Troubleshooting
-
-### General Issues
-1. Make sure ChatGPT app is installed and you're logged in
-2. Verify you have ChatGPT Plus subscription for image generation
-3. Check that you've granted all necessary accessibility permissions
-4. Try restarting both Claude and ChatGPT apps
-
-### M4 Specific Issues
-If you're experiencing issues on M4 Macs:
-1. **Increase delays**: The tool automatically uses longer wait times on all Apple Silicon Macs
-2. **Check Rosetta**: Ensure you're not running the ChatGPT app under Rosetta translation
-3. **Update macOS**: Make sure you're running the latest macOS version compatible with M4
-4. **Accessibility permissions**: M4 Macs may require additional permission confirmations
-
-### Image Generation Issues
-1. **ChatGPT Plus required**: Image generation only works with ChatGPT Plus subscription
-2. **Longer wait times**: Image generation can take 30 seconds to 5 minutes
-3. **Network connection**: Ensure stable internet connection for DALL-E requests
-4. **Prompt clarity**: Use clear, descriptive prompts for better results
-
-### Permission Issues
-If the tool can't control ChatGPT:
-1. Go to System Preferences > Privacy & Security > Privacy > Accessibility
-2. Remove and re-add Terminal (or your terminal app)
-3. Restart Claude Desktop
-4. Try the tool again
-
-## Technical Details
-
-### Enhanced AppleScript Robustness
-
-#### Conversation Retrieval
-- Added multiple UI element targeting approaches to handle ChatGPT UI changes
-- Implemented better error detection with specific error messages
-- Added fallback mechanisms using accessibility attributes
-- Improved timeout handling with appropriate delays
-
-#### Response Handling
-- Replaced fixed waiting times with dynamic response detection
-- Added intelligent completion detection that recognizes when ChatGPT has finished typing
-- Implemented text stability detection (waits until text stops changing)
-- Added response extraction logic to isolate just the relevant response text
-- Improved error handling with detailed error messages
-- Added post-processing to clean up UI elements from responses
-- Implemented incomplete response detection to warn about potential cutoffs
-
-#### Image Generation Features
-- **DALL-E Integration**: Direct integration with ChatGPT Plus DALL-E capabilities
-- **Style Control**: Support for different artistic styles (realistic, cartoon, abstract, etc.)
-- **Size Options**: Support for various image dimensions (1024x1024, 1792x1024, 1024x1792)
-- **Extended Timeouts**: Longer wait times specifically for image generation processes
-- **Conversation Context**: Generate images within existing ChatGPT conversations
-
-### M4 Architecture Optimizations
-- **Enhanced Timing**: Adjusted wait intervals and timeouts for M4 processor speeds
-- **Improved Error Handling**: Better graceful degradation when UI elements are inaccessible
-- **Robust Element Detection**: Multiple fallback methods for finding UI elements
-- **Memory Management**: Optimized for M4's unified memory architecture
-
-These optimizations make the integration more reliable across different scenarios, more resilient to UI changes in the ChatGPT application, and better at handling longer response times without message cutoff issues on all Apple Silicon Macs, including the latest M4 architecture.
-
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## License
+### Development Setup
 
-MIT
+```bash
+git clone https://github.com/renzellance/claude-chatgpt-mcp.git
+cd claude-chatgpt-mcp
+bun install
+bun run dev
+```
+
+### Code Standards
+
+- TypeScript strict mode
+- Modular architecture
+- Comprehensive error handling
+- Documentation for all public functions
+- Under 300 lines per file
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built on the [Model Context Protocol SDK](https://github.com/modelcontextprotocol/sdk)
+- Inspired by the need for robust ChatGPT integration
+- Thanks to the Claude and ChatGPT communities
+
+---
+
+**Note**: This tool requires macOS and is designed specifically for the ChatGPT desktop application. Windows and Linux support may be added in future versions.
