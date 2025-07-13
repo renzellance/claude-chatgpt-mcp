@@ -1,36 +1,32 @@
 # Dependencies
 node_modules/
-*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
 # Build outputs
 dist/
 build/
+lib/
+
+# TypeScript
 *.tsbuildinfo
 
-# Environment variables
+# Environment files
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# IDE files
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# macOS
+# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -39,25 +35,21 @@ build/
 ehthumbs.db
 Thumbs.db
 
-# Test coverage
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
 coverage/
-*.lcov
 
-# Temporary files
-*.tmp
-*.temp
-
-# Backup files
-*.bak
-*.backup
-
-# Package manager files
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-# Compiled binary addons
-build/Release/
+# nyc test coverage
+.nyc_output
 
 # Dependency directories
 jspm_packages/
@@ -74,78 +66,5 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
-# TypeScript cache
-*.tscache
-
-# Optional eslint cache
-.eslintcache
-
-# Optional stylelint cache
-.stylelintcache
-
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# next.js build output
-.next
-
-# nuxt.js build output
-.nuxt
-
-# vuepress build output
-.vuepress/dist
-
-# Serverless directories
-.serverless
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port
-
-# Local development files
-*.local
-
-# Logs
-logs
-*.log
-
-# Runtime data
-pids
-*.pid
-*.seed
-
-# Coverage directory used by tools like istanbul
-coverage
-
-# Grunt intermediate storage
-.grunt
-
-# Compiled binary addons
-build/Release
-
-# Dependency directory
-node_modules
-
-# Debug log from npm
-npm-debug.log
+# Test artifacts
+test-results/
