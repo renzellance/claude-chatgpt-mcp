@@ -2,10 +2,10 @@
  * Image Download Service - CommonJS Version
  */
 
-const { runAppleScript } = require('../utils/applescript.js');
-const { CONFIG } = require('../core/config.js');
-const { askChatGPT } = require('./chatgpt.js');
-const { downloadImageFromChatGPT, ensureDownloadDirectory } = require('../utils/file-system.js');
+const { runAppleScript } = require('../utils/applescript');
+const { CONFIG } = require('../core/config');
+const { askChatGPT } = require('./chatgpt');
+const { downloadImageFromChatGPT, ensureDownloadDirectory } = require('../utils/file-system');
 
 /**
  * Process image generation with download support (legacy sync method)
