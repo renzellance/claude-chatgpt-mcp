@@ -1,99 +1,211 @@
 /**
- * Error handling utilities
+ * Enhanced error handling with security considerations
  */
 
-import { ChatGPTError, ErrorCategory } from '../core/types.js';
-import { ERROR_MESSAGES } from '../core/config.js';
+import { sanitizeErrorMessage } from './security.js';
+
+export interface MCPError extends Error {
+  code: string;
+  retryable: boolean;
+  timestamp: Date;
+}
 
 /**
- * Create a standardized ChatGPT error
+ * Create a standardized error with security measures
  */
 export function createError(
-	message: string,
-	code?: string,
-	retryable: boolean = true,
-	category?: ErrorCategory
-): ChatGPTError {
-	const error = new Error(message) as ChatGPTError;
-	error.code = code;
-	error.retryable = retryable;
-	(error as any).category = category;
-	return error;
+  message: string,
+  code: string = "UNKNOWN_ERROR",
+  retryable: boolean = false
+): MCPError {
+  // Sanitize the error message to remove sensitive information
+  const sanitizedMessage = sanitizeErrorMessage(message);
+  
+  const error = new Error(sanitizedMessage) as MCPError;
+  error.code = code;
+  error.retryable = retryable;
+  error.timestamp = new Date();
+  
+  // Log error for debugging (without sensitive info)
+  console.error(`[${code}] ${sanitizedMessage}`, {
+    retryable,
+    timestamp: error.timestamp.toISOString()
+  });
+  
+  return error;
 }
 
 /**
- * Create error with predefined message
+ * Error categories for better handling
  */
-export function createPredefinedError(
-	code: keyof typeof ERROR_MESSAGES,
-	retryable: boolean = true,
-	category?: ErrorCategory
-): ChatGPTError {
-	return createError(ERROR_MESSAGES[code], code, retryable, category);
+export const ERROR_CATEGORIES = {
+  // Security-related errors
+  SECURITY: {
+    RATE_LIMITED: { retryable: true, severity: 'warning' },
+    INVALID_INPUT: { retryable: false, severity: 'error' },
+    PATH_TRAVERSAL: { retryable: false, severity: 'critical' },
+    INJECTION_ATTEMPT: { retryable: false, severity: 'critical' }
+  },
+  
+  // Application errors
+  APPLICATION: {
+    APP_NOT_RUNNING: { retryable: true, severity: 'warning' },
+    NO_WINDOW: { retryable: true, severity: 'warning' },
+    INTERACTION_FAILED: { retryable: true, severity: 'error' },
+    EMPTY_RESPONSE: { retryable: true, severity: 'warning' }
+  },
+  
+  // System errors
+  SYSTEM: {
+    FILE_NOT_FOUND: { retryable: false, severity: 'error' },
+    PERMISSION_DENIED: { retryable: false, severity: 'error' },
+    DISK_FULL: { retryable: false, severity: 'critical' },
+    NETWORK_ERROR: { retryable: true, severity: 'warning' }
+  }
+} as const;
+
+/**
+ * Get error category and metadata
+ */
+export function getErrorMetadata(code: string) {
+  for (const [category, errors] of Object.entries(ERROR_CATEGORIES)) {
+    if (code in errors) {
+      return {
+        category,
+        ...(errors as any)[code]
+      };
+    }
+  }
+  
+  return {
+    category: 'UNKNOWN',
+    retryable: false,
+    severity: 'error'
+  };
 }
 
 /**
- * Determine if an error is retryable based on its properties
+ * Enhanced error formatter for user-facing messages
  */
-export function isRetryableError(error: Error): boolean {
-	const chatGPTError = error as ChatGPTError;
-	
-	// Explicit retryable flag takes precedence
-	if (chatGPTError.retryable !== undefined) {
-		return chatGPTError.retryable;
-	}
-	
-	// Check error message patterns
-	if (error.message.includes("Invalid index") || 
-		error.message.includes("access") ||
-		error.message.includes("timeout")) {
-		return true;
-	}
-	
-	// Permission errors are not retryable
-	if (error.message.includes("permission") ||
-		error.message.includes("denied")) {
-		return false;
-	}
-	
-	// Default to retryable
-	return true;
+export function formatUserError(error: MCPError): string {
+  const metadata = getErrorMetadata(error.code);
+  
+  switch (error.code) {
+    case 'RATE_LIMITED':
+      return 'Too many requests. Please wait a moment before trying again.';
+    
+    case 'INVALID_INPUT':
+      return 'Invalid input provided. Please check your request and try again.';
+    
+    case 'PATH_TRAVERSAL':
+      return 'Invalid file path. Please use a path within the allowed directory.';
+    
+    case 'APP_NOT_RUNNING':
+      return 'ChatGPT application is not running. Please start the ChatGPT desktop app.';
+    
+    case 'NO_WINDOW':
+      return 'No ChatGPT window found. Please ensure the ChatGPT app is open and visible.';
+    
+    case 'INTERACTION_FAILED':
+      return 'Failed to interact with ChatGPT. Please try again.';
+    
+    case 'EMPTY_RESPONSE':
+      return 'Received empty response from ChatGPT. Please try your request again.';
+    
+    case 'FILE_NOT_FOUND':
+      return 'File not found. Please check the file path and try again.';
+    
+    case 'PERMISSION_DENIED':
+      return 'Permission denied. Please check file permissions or run with appropriate access.';
+    
+    default:
+      return 'An unexpected error occurred. Please try again.';
+  }
 }
 
 /**
- * Get helpful error message with solution steps
+ * Log error with appropriate level based on severity
  */
-export function getErrorWithSolution(error: ChatGPTError): string {
-	let message = `Error: ${error.message}`;
-	
-	if (error.code) {
-		switch (error.code) {
-			case "ACCESSIBILITY_DENIED":
-				message += "\n\nTo fix this:\n1. Open System Preferences > Privacy & Security > Accessibility\n2. Add Terminal (or iTerm) to the list\n3. Enable the checkbox for Terminal\n4. Restart Claude Desktop";
-				break;
-			case "APP_NOT_RUNNING":
-				message += "\n\nPlease start the ChatGPT desktop app and try again.";
-				break;
-			case "NO_WINDOW":
-				message += "\n\nPlease ensure ChatGPT is fully loaded with a visible window.";
-				break;
-			case "NO_IMAGES_FOUND":
-				message += "\n\nPlease generate an image first, then try downloading.";
-				break;
-		}
-	}
-	
-	return message;
+export function logError(error: MCPError): void {
+  const metadata = getErrorMetadata(error.code);
+  const logEntry = {
+    code: error.code,
+    message: error.message,
+    category: metadata.category,
+    severity: metadata.severity,
+    retryable: error.retryable,
+    timestamp: error.timestamp.toISOString()
+  };
+  
+  switch (metadata.severity) {
+    case 'critical':
+      console.error('CRITICAL ERROR:', logEntry);
+      break;
+    case 'error':
+      console.error('ERROR:', logEntry);
+      break;
+    case 'warning':
+      console.warn('WARNING:', logEntry);
+      break;
+    default:
+      console.log('INFO:', logEntry);
+  }
 }
 
 /**
- * Log error with appropriate level
+ * Wrap function with enhanced error handling
  */
-export function logError(error: Error, context: string): void {
-	console.error(`[${context}] Error:`, {
-		message: error.message,
-		code: (error as ChatGPTError).code,
-		retryable: (error as ChatGPTError).retryable,
-		stack: error.stack?.split('\n').slice(0, 3).join('\n') // First 3 lines only
-	});
+export function withErrorHandling<T extends (...args: any[]) => any>(
+  fn: T,
+  context: string = 'unknown'
+): T {
+  return ((...args: Parameters<T>) => {
+    try {
+      const result = fn(...args);
+      
+      // Handle async functions
+      if (result instanceof Promise) {
+        return result.catch((error) => {
+          const mcpError = error instanceof Error && 'code' in error 
+            ? error as MCPError
+            : createError(
+                `Error in ${context}: ${sanitizeErrorMessage(error)}`,
+                'WRAPPED_ERROR',
+                false
+              );
+          
+          logError(mcpError);
+          throw mcpError;
+        });
+      }
+      
+      return result;
+    } catch (error) {
+      const mcpError = error instanceof Error && 'code' in error 
+        ? error as MCPError
+        : createError(
+            `Error in ${context}: ${sanitizeErrorMessage(error)}`,
+            'WRAPPED_ERROR',
+            false
+          );
+      
+      logError(mcpError);
+      throw mcpError;
+    }
+  }) as T;
+}
+
+/**
+ * Validate and sanitize error before throwing
+ */
+export function safeThrow(error: unknown, fallbackMessage: string = 'An error occurred'): never {
+  if (error instanceof Error && 'code' in error) {
+    throw error as MCPError;
+  }
+  
+  throw createError(
+    sanitizeErrorMessage(error) || fallbackMessage,
+    'SAFE_THROW_ERROR',
+    false
+  );
 }
