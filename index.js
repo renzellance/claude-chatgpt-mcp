@@ -4,7 +4,7 @@
  * Retains ALL async functionality: start_image_generation, check_generation_status, get_latest_image
  */
 
-const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio");
+const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { createServer } = require('./src/core/server');
 const { CONFIG } = require('./src/core/config');
 const { ensureDownloadDirectory, cleanupFiles } = require('./src/utils/file-system');
