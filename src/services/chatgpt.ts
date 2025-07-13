@@ -1,5 +1,6 @@
 /**
- * ChatGPT interaction service - SECURITY HARDENED
+ * ChatGPT interaction service - FULLY SECURITY HARDENED
+ * Updated to use unified security wrapper
  */
 
 import { CONFIG } from '../core/config.js';
@@ -7,15 +8,71 @@ import { createError } from '../utils/error-handling.js';
 import { withRetry } from '../utils/retry.js';
 import { globalRateLimiter, sanitizeErrorMessage } from '../utils/security.js';
 import { 
-  checkChatGPTAccess, 
-  ClipboardManager, 
-  generateTextScript, 
-  generateConversationScript, 
-  executeAppleScript 
-} from './applescript.js';
+  executeSecureStatusCheck,
+  executeSecureTextScript,
+  executeSecureConversationScript
+} from '../utils/secure-applescript.js';
 
 /**
- * Send a text prompt to ChatGPT and get response - SECURITY HARDENED
+ * Clipboard manager for safe clipboard operations - ENHANCED
+ */
+export class ClipboardManager {
+  private originalClipboard: string | null = null;
+  private timeoutId: NodeJS.Timeout | null = null;
+
+  async saveClipboard(): Promise<void> {
+    try {
+      const { executeSecureAppleScript } = await import('../utils/secure-applescript.js');
+      const script = `
+        tell application "System Events"
+          return the clipboard as string
+        end tell
+      `;
+      
+      const result = await executeSecureAppleScript(script, 'clipboard_save', 1);
+      this.originalClipboard = result.success ? result.data || '' : '';
+      
+      // Set timeout to clear clipboard data after 5 minutes for security
+      this.timeoutId = setTimeout(() => {
+        this.originalClipboard = null;
+      }, 5 * 60 * 1000);
+      
+    } catch (error) {
+      this.originalClipboard = '';
+    }
+  }
+
+  async restoreClipboard(): Promise<void> {
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+    
+    if (this.originalClipboard !== null) {
+      try {
+        const { executeSecureAppleScript } = await import('../utils/secure-applescript.js');
+        const { sanitizeForAppleScript } = await import('../utils/security.js');
+        
+        const sanitizedClipboard = sanitizeForAppleScript(this.originalClipboard);
+        const script = `
+          tell application "System Events"
+            set the clipboard to "${sanitizedClipboard}"
+          end tell
+        `;
+        
+        await executeSecureAppleScript(script, 'clipboard_restore', 1);
+      } catch (error) {
+        // Log but don't throw - clipboard restoration is not critical
+        console.warn('Failed to restore clipboard:', sanitizeErrorMessage(error));
+      } finally {
+        this.originalClipboard = null;
+      }
+    }
+  }
+}
+
+/**
+ * Send a text prompt to ChatGPT and get response - FULLY SECURITY HARDENED
  */
 export async function askChatGPT(
   prompt: string,
@@ -49,7 +106,15 @@ export async function askChatGPT(
       );
     }
 
-    await checkChatGPTAccess();
+    // Check ChatGPT accessibility using secure wrapper
+    const isAccessible = await executeSecureStatusCheck();
+    if (!isAccessible) {
+      throw createError(
+        'ChatGPT application is not running or not accessible',
+        'APP_NOT_ACCESSIBLE',
+        true
+      );
+    }
     
     const clipboard = new ClipboardManager();
     
@@ -57,20 +122,11 @@ export async function askChatGPT(
       // Save original clipboard
       await clipboard.saveClipboard();
       
-      // Generate secure script
-      const script = generateTextScript(prompt, conversationId);
-      const result = await executeAppleScript(script);
-      
-      if (!result.success) {
-        throw createError(
-          `ChatGPT interaction failed: ${result.error}`,
-          "INTERACTION_FAILED",
-          true
-        );
-      }
+      // Execute secure text script
+      const response = await executeSecureTextScript(prompt, conversationId);
       
       // Process the response
-      const cleanedResult = cleanResponse(result.data);
+      const cleanedResult = cleanResponse(response);
       
       if (!cleanedResult) {
         throw createError(
@@ -98,7 +154,7 @@ export async function askChatGPT(
 }
 
 /**
- * Get list of conversations from ChatGPT - SECURITY HARDENED
+ * Get list of conversations from ChatGPT - FULLY SECURITY HARDENED
  */
 export async function getConversations(): Promise<string[]> {
   return withRetry(async () => {
@@ -111,47 +167,26 @@ export async function getConversations(): Promise<string[]> {
       );
     }
 
-    await checkChatGPTAccess();
+    // Check ChatGPT accessibility using secure wrapper
+    const isAccessible = await executeSecureStatusCheck();
+    if (!isAccessible) {
+      throw createError(
+        'ChatGPT application is not running or not accessible',
+        'APP_NOT_ACCESSIBLE',
+        true
+      );
+    }
     
     try {
-      const script = generateConversationScript();
-      const result = await executeAppleScript(script);
+      // Execute secure conversation script
+      const conversations = await executeSecureConversationScript();
       
-      if (!result.success) {
-        if (result.error?.includes("ChatGPT is not running")) {
-          throw createError("ChatGPT application is not running", "APP_NOT_RUNNING", false);
-        } else if (result.error?.includes("No ChatGPT window found")) {
-          throw createError("No ChatGPT window found", "NO_WINDOW", true);
-        } else {
-          throw createError(sanitizeErrorMessage(result.error || "Unknown error"), "RETRIEVAL_ERROR", true);
-        }
-      }
-      
-      // Parse the result with input validation
-      if (Array.isArray(result.data)) {
-        // Validate each conversation entry
-        return result.data
-          .filter(conv => typeof conv === 'string' && conv.trim() !== '')
-          .slice(0, 50) // Limit to reasonable number
-          .map(conv => conv.substring(0, 200)); // Limit length of each conversation title
-      }
-      
-      // Handle comma-separated string results
-      if (typeof result.data === "string" && result.data.includes(",")) {
-        return result.data
-          .split(", ")
-          .filter(conv => conv.trim() !== "")
-          .slice(0, 50) // Limit to reasonable number
-          .map(conv => conv.substring(0, 200)); // Limit length
-      }
-      
-      // Single conversation or empty result
-      if (typeof result.data === "string" && result.data.trim() !== "") {
-        return [result.data.substring(0, 200)];
-      }
-      
-      // Empty result
-      return [];
+      // Additional validation and filtering
+      return conversations
+        .filter(conv => typeof conv === 'string' && conv.trim() !== '')
+        .filter(conv => !conv.toLowerCase().includes('error'))
+        .slice(0, 50) // Reasonable limit
+        .map(conv => conv.substring(0, 200)); // Length limit
       
     } catch (error) {
       throw createError(
@@ -198,7 +233,9 @@ export function isErrorResponse(response: string): boolean {
     "Rate limit",
     "Too many requests",
     "Service unavailable",
-    "Connection error"
+    "Connection error",
+    "Access denied",
+    "Permission denied"
   ];
   
   const lowerResponse = response.toLowerCase();
@@ -221,3 +258,62 @@ export function validateConversationId(conversationId: string): boolean {
   const validPattern = /^[a-zA-Z0-9\-_.]+$/;
   return validPattern.test(cleanId);
 }
+
+/**
+ * Check ChatGPT application health
+ */
+export async function checkChatGPTHealth(): Promise<{
+  isRunning: boolean;
+  isAccessible: boolean;
+  version?: string;
+  timestamp: number;
+}> {
+  const timestamp = Date.now();
+  
+  try {
+    const isRunning = await executeSecureStatusCheck();
+    
+    if (!isRunning) {
+      return {
+        isRunning: false,
+        isAccessible: false,
+        timestamp
+      };
+    }
+    
+    // Try to get version info
+    let version: string | undefined;
+    try {
+      const { executeSecureAppleScript } = await import('../utils/secure-applescript.js');
+      const script = `
+        tell application "ChatGPT"
+          return version
+        end tell
+      `;
+      
+      const result = await executeSecureAppleScript(script, 'version_check', 1);
+      version = result.success ? result.data : undefined;
+    } catch {
+      // Version check is optional
+    }
+    
+    return {
+      isRunning: true,
+      isAccessible: true,
+      version,
+      timestamp
+    };
+    
+  } catch (error) {
+    return {
+      isRunning: false,
+      isAccessible: false,
+      timestamp
+    };
+  }
+}
+
+// Legacy compatibility exports
+export const checkChatGPTAccess = executeSecureStatusCheck;
+export const generateTextScript = executeSecureTextScript;
+export const generateConversationScript = executeSecureConversationScript;
