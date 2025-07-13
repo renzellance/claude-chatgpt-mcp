@@ -1,6 +1,6 @@
 {
   "name": "claude-chatgpt-mcp",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "main": "index.js",
   "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with async image generation support",
   "author": "Syed Azhar",
@@ -30,8 +30,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.5.0",
-    "run-applescript": "^7.0.0",
-    "uuid": "^10.0.0"
+    "run-applescript": "^7.0.0"
   },
   "files": [
     "index.js",
