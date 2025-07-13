@@ -1,8 +1,8 @@
 {
   "name": "claude-chatgpt-mcp",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "main": "index.js",
-  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with async image generation support",
+  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with async image generation support - SECURITY HARDENED",
   "author": "Syed Azhar",
   "license": "MIT",
   "bin": {
@@ -23,23 +23,53 @@
     "mac",
     "ai",
     "enhanced",
+    "security",
+    "hardened",
     "commonjs"
   ],
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Tests not implemented yet\" && exit 0"
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "security-test": "node -e \"import('./dist/utils/security-tests.js').then(m => m.runSecurityTests())\"",
+    "security-audit": "npm audit && npm run security-test",
+    "test": "npm run security-test",
+    "prestart": "npm run build",
+    "prepublishOnly": "npm run clean && npm run build && npm run security-audit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.5.0",
     "run-applescript": "^7.0.0",
     "uuid": "^10.0.0"
   },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.0",
+    "typescript": "^5.0.0"
+  },
   "files": [
     "index.js",
+    "dist/**/*",
     "src/**/*",
-    "README.md"
+    "README.md",
+    "SECURITY.md"
   ],
   "engines": {
     "node": ">=18"
+  },
+  "security": {
+    "features": [
+      "Input sanitization for AppleScript injection prevention",
+      "Path traversal protection",
+      "Rate limiting",
+      "Error message sanitization",
+      "File validation and size limits",
+      "Comprehensive security test suite"
+    ],
+    "audit": {
+      "level": "moderate",
+      "skipDev": false
+    }
   }
 }
