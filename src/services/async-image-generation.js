@@ -4,8 +4,8 @@
  * RETAINS ALL ASYNC FUNCTIONALITY: start_image_generation, check_generation_status, get_latest_image
  */
 
-const { runAppleScript } = require('../utils/applescript.js');
-const { CONFIG } = require('../core/config.js');
+const { runAppleScript } = require('../utils/applescript');
+const { CONFIG } = require('../core/config');
 const { v4: uuidv4 } = require('uuid');
 
 class AsyncGenerationTracker {
