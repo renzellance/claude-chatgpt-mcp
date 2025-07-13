@@ -2,7 +2,7 @@
  * MCP Server setup - CommonJS Version
  */
 
-const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
+const { Server } = require("@modelcontextprotocol/sdk/server/index");
 const { handleChatGPTTool, createErrorResponse } = require('../handlers/tool-handlers');
 
 /**
