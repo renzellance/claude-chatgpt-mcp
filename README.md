@@ -1,25 +1,30 @@
-# Enhanced ChatGPT MCP Tool with Robust Image Download
+# Enhanced ChatGPT MCP Tool with Async Image Generation
 
-A comprehensive Model Context Protocol (MCP) tool that enables Claude to interact seamlessly with the ChatGPT desktop app on macOS, featuring robust DALL-E image generation with actual file download capabilities.
+A comprehensive Model Context Protocol (MCP) tool that enables Claude to interact seamlessly with the ChatGPT desktop app on macOS, featuring robust DALL-E image generation with actual file download capabilities and async batch processing.
 
-## 🚀 What's New in Version 2.0
+## 🚀 What's New in Version 2.1
 
+- **🔄 Async Image Generation**: Start generation, check status, retrieve when ready
+- **⚡ Batch Processing**: Generate multiple images without blocking
 - **🎯 Actual Image Downloads**: Downloads real image files (not just text descriptions)
-- **🔄 Multiple Download Strategies**: Context menu, keyboard shortcuts, and fallback methods
-- **⚡ Enhanced Error Handling**: Smart retry logic with exponential backoff
-- **🏗️ Modular Architecture**: Clean, maintainable code structure
-- **🧹 Auto-Cleanup**: Configurable file cleanup and resource management
-- **🛡️ Robust UI Handling**: Multiple fallbacks for ChatGPT UI changes
-- **📁 Generic Naming**: Business-agnostic folder structure
+- **🏗️ TypeScript Build System**: Proper compilation and development workflow
+- **🔧 Enhanced Dependencies**: Fixed missing UUID support for generation tracking
+- **📁 Organized Architecture**: Clean TypeScript source with proper build output
 
 ## ✨ Features
 
 ### Core Functionality
 - **Text Conversations**: Ask ChatGPT questions directly from Claude
-- **Image Generation**: Generate images using DALL-E through ChatGPT Plus
+- **Sync Image Generation**: Traditional generate and wait approach
+- **Async Image Generation**: Non-blocking image generation with status polling
 - **File Downloads**: Actually download generated images to your file system
 - **Conversation Management**: View and continue existing ChatGPT conversations
 - **Enhanced M4 Mac Support**: Optimized for all Apple Silicon chips
+
+### Async Operations
+- **`start_image_generation`**: Begin image generation and get tracking ID
+- **`check_generation_status`**: Poll generation progress
+- **`get_latest_image`**: Retrieve completed images
 
 ### Advanced Capabilities
 - **Multiple Download Methods**: Tries various approaches to ensure successful downloads
@@ -27,48 +32,25 @@ A comprehensive Model Context Protocol (MCP) tool that enables Claude to interac
 - **Error Recovery**: Detailed error messages with solution steps
 - **Resource Management**: Automatic cleanup and directory size management
 - **File Verification**: Ensures complete downloads before reporting success
-- **Fallback Detection**: Finds recently created images if direct download fails
+- **Generation Tracking**: Track multiple concurrent image generations
 
 ## 📋 Prerequisites
 
 - **macOS** with Apple Silicon chip (M1/M2/M3/M4 supported)
 - **[ChatGPT desktop app](https://chatgpt.com/download)** installed
 - **ChatGPT Plus subscription** (required for DALL-E image generation)
-- **[Bun](https://bun.sh/)** installed
+- **Node.js 18+** installed
 - **[Claude desktop app](https://claude.ai/desktop)** installed
 
 ## 🚀 Installation
 
-### NPX Installation (Recommended)
-
-1. **Install and run using NPX:**
+### Quick Start (NPM)
 
 ```bash
-npx claude-chatgpt-mcp
+npm install -g claude-chatgpt-mcp
 ```
 
-2. **Configure Claude Desktop:**
-
-Edit your `claude_desktop_config.json` file (located at `~/Library/Application Support/Claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "chatgpt-mcp": {
-      "command": "npx",
-      "args": ["claude-chatgpt-mcp"]
-    }
-  }
-}
-```
-
-3. **Restart Claude Desktop app**
-
-4. **Grant permissions:**
-   - Go to System Preferences > Privacy & Security > Privacy
-   - Give Terminal (or iTerm) access to Accessibility features
-
-### Manual Installation
+### Development Installation
 
 1. **Clone this repository:**
 
@@ -80,29 +62,35 @@ cd claude-chatgpt-mcp
 2. **Install dependencies:**
 
 ```bash
-bun install
+npm install
 ```
 
 3. **Build the project:**
 
 ```bash
-bun run build
+npm run build
 ```
 
-4. **Update Claude Desktop configuration:**
+4. **Configure Claude Desktop:**
+
+Edit your `claude_desktop_config.json` file (located at `~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "chatgpt-mcp": {
-      "command": "/Users/YOURUSERNAME/.bun/bin/bun",
-      "args": ["run", "/path/to/claude-chatgpt-mcp/dist/index.js"]
+      "command": "node",
+      "args": ["/path/to/claude-chatgpt-mcp/dist/index.js"]
     }
   }
 }
 ```
 
 5. **Restart Claude Desktop app**
+
+6. **Grant permissions:**
+   - Go to System Preferences > Privacy & Security > Privacy
+   - Give Terminal (or iTerm) access to Accessibility features
 
 ## 💡 Usage Examples
 
@@ -113,34 +101,79 @@ bun run build
 "Ask ChatGPT to explain quantum computing"
 ```
 
-### Image Generation with Download
+### Sync Image Generation
 ```
 "Generate an image of a peaceful meditation scene in cartoon style"
 "Create a logo design for a tech startup with modern aesthetics"
 "Generate a realistic landscape image at 1792x1024 size"
 ```
 
-### Advanced Operations
+### Async Image Generation (New!)
 ```
-"Generate an image in watercolor style and save it to ~/Desktop"
-"Create an abstract art piece and clean up the file after processing"
-"Generate a minimalist design and don't auto-download the file"
+"Start generating an image of a mountain landscape"
+→ Returns: Generation ID abc-123
+
+"Check status of generation abc-123"
+→ Returns: Status (pending/generating/completed/failed)
+
+"Get the latest generated image"
+→ Downloads the completed image
 ```
 
-## 🔧 Advanced Configuration
+## 🔧 Development Workflow
 
-### Image Generation Options
+### Building and Testing
+
+```bash
+# Development mode (TypeScript compilation + watch)
+npm run dev
+
+# Production build
+npm run build
+
+# Clean build artifacts
+npm run clean
+
+# Start built version
+npm start
+```
+
+### Project Structure
+
+```
+src/
+├── core/              # Core types, config, and server setup
+├── services/          # Business logic (ChatGPT, async generation)
+├── utils/             # Utilities (retry, errors, file system)
+├── handlers/          # MCP request handlers
+└── index.ts           # Main entry point
+
+dist/                  # Compiled JavaScript output
+```
+
+### Advanced Configuration
+
+#### Image Generation Options
 
 ```javascript
 {
-  "operation": "generate_image",
+  "operation": "start_image_generation",  // or "generate_image" for sync
   "prompt": "A serene mountain landscape",
-  "image_style": "realistic",        // Style: realistic, cartoon, abstract, etc.
-  "image_size": "1024x1024",         // Size: 1024x1024, 1792x1024, 1024x1792
-  "download_image": true,             // Download to file system
-  "save_path": "/custom/path",        // Custom save location
-  "cleanup_after": false,             // Auto-cleanup after processing
-  "max_retries": 5                   // Override default retry attempts
+  "image_style": "realistic",             // Style: realistic, cartoon, abstract, etc.
+  "image_size": "1024x1024",              // Size: 1024x1024, 1792x1024, 1024x1792
+  "conversation_id": "optional-id"        // Continue specific conversation
+}
+
+// Check status later
+{
+  "operation": "check_generation_status",
+  "generation_id": "returned-uuid"
+}
+
+// Retrieve when ready
+{
+  "operation": "get_latest_image",
+  "save_path": "/custom/path"             // Optional custom save location
 }
 ```
 
@@ -149,32 +182,24 @@ bun run build
 - **Default Location**: `~/Downloads/ChatGPT_MCP_Images/`
 - **Naming Convention**: `chatgpt_TIMESTAMP_PROMPT_STYLE.png`
 - **Auto-Cleanup**: Configurable cleanup based on age, size, and count
-- **Conflict Resolution**: Automatic filename increments for duplicates
-
-## 🛠️ Architecture
-
-### Modular Design
-
-```
-src/
-├── core/              # Core types and configuration
-├── services/          # Business logic (ChatGPT, image download)
-├── utils/             # Utilities (retry, errors, file system)
-├── handlers/          # MCP request handlers
-└── index.ts           # Main entry point
-```
-
-### Key Components
-
-- **Error Handling**: Categorized errors with recovery strategies
-- **Retry Logic**: Exponential backoff with smart retry decisions
-- **File System**: Robust file operations with cleanup management
-- **AppleScript**: Safe execution with clipboard management
-- **Image Download**: Multiple strategies with verification
+- **Generation Tracking**: In-memory tracking with automatic cleanup
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### Build Issues
+
+```bash
+# Missing dependencies
+npm install
+
+# TypeScript compilation errors
+npm run clean && npm run build
+
+# Module resolution issues
+rm -rf node_modules dist && npm install && npm run build
+```
+
+### Runtime Issues
 
 #### Permission Problems
 ```
@@ -195,46 +220,34 @@ Error: ChatGPT application is not running
 2. Ensure you're logged in
 3. Wait for full app loading
 
-#### Image Download Issues
+#### Async Generation Issues
 ```
-Error: No images found in conversation
+Error: Generation ID not found
 ```
 **Solution:**
-1. Ensure ChatGPT Plus subscription is active
-2. Generate an image first before attempting download
-3. Wait for image generation to complete
+1. Check that you're using the correct generation ID
+2. Generations expire after 1 hour
+3. Use `get_latest_image` if status shows completed
 
 #### M4 Mac Specific
 - Ensure ChatGPT app is running natively (not under Rosetta)
 - Update to latest macOS version
 - Try restarting both apps if issues persist
 
-### Debug Mode
-
-For detailed logging, modify the config:
-
-```typescript
-// In src/core/config.ts
-logging: {
-  level: 'debug',
-  verbose: true
-}
-```
-
 ## 🔒 Security & Privacy
 
 - **Minimal Permissions**: Uses only necessary AppleScript commands
-- **Clipboard Safety**: Automatically saves and restores clipboard content
 - **No Data Collection**: All operations are local to your machine
 - **File Cleanup**: Optional automatic cleanup of downloaded files
+- **Generation Tracking**: In-memory only, no persistent storage
 - **Error Handling**: No sensitive information in error messages
 
 ## 🚀 Performance Optimizations
 
+- **Async Processing**: Non-blocking image generation
 - **Smart Caching**: Reduces redundant operations
 - **Efficient Retries**: Exponential backoff prevents system overload
 - **Resource Management**: Automatic cleanup prevents disk space issues
-- **Optimized Scripts**: Minimal AppleScript execution time
 - **Background Operations**: Non-blocking cleanup and maintenance
 
 ## 🤝 Contributing
@@ -246,8 +259,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ```bash
 git clone https://github.com/renzellance/claude-chatgpt-mcp.git
 cd claude-chatgpt-mcp
-bun install
-bun run dev
+npm install
+npm run dev
 ```
 
 ### Code Standards
@@ -256,7 +269,7 @@ bun run dev
 - Modular architecture
 - Comprehensive error handling
 - Documentation for all public functions
-- Under 300 lines per file
+- Proper build and compilation process
 
 ## 📄 License
 
