@@ -2,8 +2,8 @@
  * ChatGPT Service - CommonJS Version
  */
 
-const { runAppleScript } = require('../utils/applescript.js');
-const { CONFIG } = require('../core/config.js');
+const { runAppleScript } = require('../utils/applescript');
+const { CONFIG } = require('../core/config');
 
 /**
  * Ask ChatGPT a question

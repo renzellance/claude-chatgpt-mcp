@@ -5,9 +5,9 @@
  */
 
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
-const { createServer } = require('./src/core/server.js');
-const { CONFIG } = require('./src/core/config.js');
-const { ensureDownloadDirectory, cleanupFiles } = require('./src/utils/file-system.js');
+const { createServer } = require('./src/core/server');
+const { CONFIG } = require('./src/core/config');
+const { ensureDownloadDirectory, cleanupFiles } = require('./src/utils/file-system');
 
 /**
  * Initialize the application

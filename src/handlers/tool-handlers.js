@@ -3,17 +3,17 @@
  * RETAINS ALL ASYNC OPERATIONS: start_image_generation, check_generation_status, get_latest_image
  */
 
-const { CONFIG } = require('../core/config.js');
-const { getErrorWithSolution } = require('../utils/error-handling.js');
-const { askChatGPT, getConversations } = require('../services/chatgpt.js');
-const { processImageGeneration } = require('../services/image-download.js');
-const { cleanupFiles } = require('../utils/file-system.js');
+const { CONFIG } = require('../core/config');
+const { getErrorWithSolution } = require('../utils/error-handling');
+const { askChatGPT, getConversations } = require('../services/chatgpt');
+const { processImageGeneration } = require('../services/image-download');
+const { cleanupFiles } = require('../utils/file-system');
 const { 
 	startImageGeneration, 
 	checkGenerationStatus, 
 	getLatestImage, 
 	cleanupGenerations 
-} = require('../services/async-image-generation.js');
+} = require('../services/async-image-generation');
 
 /**
  * Type guard for ChatGPT tool arguments (updated for async operations)

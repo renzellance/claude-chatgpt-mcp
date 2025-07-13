@@ -2,7 +2,7 @@
  * Retry utilities - CommonJS Version
  */
 
-const { shouldRetry, getRetryDelay } = require('./error-handling.js');
+const { shouldRetry, getRetryDelay } = require('./error-handling');
 
 /**
  * Retry a function with exponential backoff
