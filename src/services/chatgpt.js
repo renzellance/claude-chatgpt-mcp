@@ -1,15 +1,28 @@
 /**
- * ChatGPT Service - CommonJS Version
+ * ChatGPT Service - CommonJS Version WITH SECURITY HARDENING
  */
 
-const { runAppleScript } = require('../utils/applescript');
+const { runAppleScript, sanitizePromptForAppleScript } = require('../utils/applescript');
 const { CONFIG } = require('../core/config');
 
 /**
- * Ask ChatGPT a question
+ * Ask ChatGPT a question WITH SECURITY
  */
 async function askChatGPT(prompt, conversationId) {
-	let script = `
+	// SECURITY: Validate and sanitize prompt
+	if (!prompt || typeof prompt !== 'string') {
+		throw new Error('Prompt must be a non-empty string');
+	}
+	
+	if (prompt.length > 5000) {
+		throw new Error('Prompt too long (max 5000 characters)');
+	}
+	
+	// SECURITY: Sanitize prompt for AppleScript injection prevention
+	const sanitizedPrompt = sanitizePromptForAppleScript(prompt);
+	
+	// Use template-based approach for security
+	const scriptTemplate = `
 		tell application "ChatGPT"
 			activate
 			delay 1
@@ -23,7 +36,7 @@ async function askChatGPT(prompt, conversationId) {
 					set focused of inputField to true
 					key code 0 using {command down} -- Cmd+A to select all
 					delay 0.1
-					keystroke "${prompt.replace(/"/g, '\\"')}"
+					keystroke "{{USER_INPUT}}"
 					delay 0.5
 					
 					-- Press Enter to send
@@ -50,7 +63,10 @@ async function askChatGPT(prompt, conversationId) {
 		end tell
 	`;
 	
-	const result = await runAppleScript(script);
+	// Use secure AppleScript execution
+	const { runAppleScriptWithUserInput } = require('../utils/applescript');
+	const result = await runAppleScriptWithUserInput(scriptTemplate, sanitizedPrompt);
+	
 	if (!result.success) {
 		throw new Error(`Failed to ask ChatGPT: ${result.error}`);
 	}

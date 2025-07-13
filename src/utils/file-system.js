@@ -1,11 +1,65 @@
 /**
- * File system utilities - CommonJS Version
+ * File system utilities - CommonJS Version WITH SECURITY HARDENING
  */
 
 const fs = require('fs/promises');
 const path = require('path');
 const { CONFIG } = require('../core/config');
-const { runAppleScript } = require('./applescript');
+const { runAppleScript, sanitizePromptForAppleScript } = require('./applescript');
+
+/**
+ * SECURITY: Validate file paths to prevent directory traversal
+ */
+function validateSavePath(userPath) {
+	if (!userPath || typeof userPath !== 'string') {
+		return path.join(CONFIG.image.downloadPath, 'default.png');
+	}
+	
+	// Resolve to absolute path
+	const resolvedPath = path.resolve(userPath);
+	const allowedDir = path.resolve(CONFIG.image.downloadPath);
+	
+	// SECURITY: Ensure path is within allowed directory
+	if (!resolvedPath.startsWith(allowedDir)) {
+		throw new Error(`Security violation: Path '${userPath}' is outside allowed directory`);
+	}
+	
+	// SECURITY: Check for suspicious file names
+	const fileName = path.basename(resolvedPath);
+	if (fileName.includes('..') || fileName.includes('~') || fileName.startsWith('.')) {
+		throw new Error(`Security violation: Invalid filename '${fileName}'`);
+	}
+	
+	// SECURITY: Limit file extension to safe types
+	const ext = path.extname(fileName).toLowerCase();
+	const allowedExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+	if (ext && !allowedExtensions.includes(ext)) {
+		throw new Error(`Security violation: File extension '${ext}' not allowed`);
+	}
+	
+	return resolvedPath;
+}
+
+/**
+ * SECURITY: Validate file size to prevent disk exhaustion
+ */
+async function validateFileSize(filePath, maxSizeMB = 50) {
+	try {
+		const stats = await fs.stat(filePath);
+		const sizeMB = stats.size / (1024 * 1024);
+		
+		if (sizeMB > maxSizeMB) {
+			throw new Error(`File too large: ${sizeMB.toFixed(1)}MB (max: ${maxSizeMB}MB)`);
+		}
+		
+		return true;
+	} catch (error) {
+		if (error.code === 'ENOENT') {
+			return true; // File doesn't exist yet, that's fine
+		}
+		throw error;
+	}
+}
 
 /**
  * Ensure the download directory exists
@@ -22,12 +76,17 @@ function ensureDownloadDirectory() {
 }
 
 /**
- * Download image from ChatGPT UI
+ * Download image from ChatGPT UI WITH SECURITY
  */
 async function downloadImageFromChatGPT(savePath) {
 	const timestamp = Date.now();
 	const filename = `chatgpt_image_${timestamp}.png`;
-	const targetPath = savePath || path.join(CONFIG.image.downloadPath, filename);
+	
+	// SECURITY: Validate and sanitize the save path
+	const safePath = savePath ? validateSavePath(savePath) : path.join(CONFIG.image.downloadPath, filename);
+	
+	// SECURITY: Sanitize path for AppleScript
+	const sanitizedPath = sanitizePromptForAppleScript(safePath);
 	
 	const script = `
 		tell application "ChatGPT"
@@ -66,14 +125,14 @@ async function downloadImageFromChatGPT(savePath) {
 						-- Handle save dialog if it appears
 						try
 							-- Type the target path
-							keystroke "${targetPath.replace(/"/g, '\\"')}"
+							keystroke "${sanitizedPath}"
 							delay 0.5
 							
 							-- Press Enter to save
 							key code 36 -- Enter key
 							delay 1
 							
-							return "Image saved to ${targetPath.replace(/"/g, '\\"')}"
+							return "Image saved to ${sanitizedPath}"
 						on error
 							return "Save dialog handling failed"
 						end try
@@ -89,17 +148,19 @@ async function downloadImageFromChatGPT(savePath) {
 		const result = await runAppleScript(script);
 		
 		if (result.success && result.data && result.data.includes('Image saved')) {
-			// Verify the file actually exists
+			// SECURITY: Verify the file actually exists and validate size
 			try {
-				await fs.access(targetPath);
+				await fs.access(safePath);
+				await validateFileSize(safePath);
+				
 				return {
 					success: true,
-					imagePath: targetPath
+					imagePath: safePath
 				};
-			} catch {
+			} catch (error) {
 				return {
 					success: false,
-					error: "File was not saved successfully"
+					error: `File validation failed: ${error.message}`
 				};
 			}
 		}
@@ -117,28 +178,53 @@ async function downloadImageFromChatGPT(savePath) {
 }
 
 /**
- * Clean up old files in the download directory
+ * Clean up old files in the download directory WITH SECURITY
  */
 async function cleanupFiles(directory, maxAgeHours = 24) {
+	// SECURITY: Validate directory is within allowed bounds
+	const safeDir = path.resolve(directory);
+	const allowedDir = path.resolve(CONFIG.image.downloadPath);
+	
+	if (!safeDir.startsWith(allowedDir)) {
+		console.warn(`Security: Cleanup attempted outside allowed directory: ${directory}`);
+		return;
+	}
+	
 	try {
-		const files = await fs.readdir(directory);
+		const files = await fs.readdir(safeDir);
 		const now = Date.now();
 		const maxAge = maxAgeHours * 60 * 60 * 1000;
 		
-		for (const file of files) {
-			const filePath = path.join(directory, file);
+		let cleanedCount = 0;
+		const maxCleanup = 100; // SECURITY: Limit cleanup operations
+		
+		for (const file of files.slice(0, maxCleanup)) {
+			const filePath = path.join(safeDir, file);
+			
+			// SECURITY: Skip hidden files and directories
+			if (file.startsWith('.') || file.includes('..')) {
+				continue;
+			}
+			
 			try {
 				const stats = await fs.stat(filePath);
-				if (now - stats.mtime.getTime() > maxAge) {
+				
+				// Only delete files, not directories
+				if (stats.isFile() && now - stats.mtime.getTime() > maxAge) {
 					await fs.unlink(filePath);
-					console.log(`Cleaned up old file: ${filePath}`);
+					cleanedCount++;
+					console.log(`🗑️ Cleaned up: ${path.basename(filePath)}`);
 				}
 			} catch (error) {
-				console.warn(`Failed to cleanup file ${filePath}: ${error}`);
+				console.warn(`Failed to cleanup file ${filePath}: ${error.message}`);
 			}
 		}
+		
+		if (cleanedCount > 0) {
+			console.log(`✅ Cleanup complete: ${cleanedCount} files removed`);
+		}
 	} catch (error) {
-		console.warn(`Cleanup failed: ${error}`);
+		console.warn(`Cleanup failed: ${error.message}`);
 	}
 }
 
@@ -155,44 +241,73 @@ async function getFileSize(filePath) {
 }
 
 /**
- * Check if directory size exceeds limit and clean if needed
+ * Check if directory size exceeds limit and clean if needed WITH SECURITY
  */
 async function checkDirectorySize(directory, maxSizeMB = 100) {
+	// SECURITY: Validate directory
+	const safeDir = path.resolve(directory);
+	const allowedDir = path.resolve(CONFIG.image.downloadPath);
+	
+	if (!safeDir.startsWith(allowedDir)) {
+		console.warn(`Security: Directory size check outside allowed directory: ${directory}`);
+		return;
+	}
+	
 	try {
-		const files = await fs.readdir(directory);
+		const files = await fs.readdir(safeDir);
 		let totalSize = 0;
 		
 		const fileStats = await Promise.all(
-			files.map(async (file) => {
-				const filePath = path.join(directory, file);
-				const stats = await fs.stat(filePath);
-				totalSize += stats.size;
-				return { path: filePath, mtime: stats.mtime, size: stats.size };
+			files.slice(0, 1000).map(async (file) => { // SECURITY: Limit file processing
+				if (file.startsWith('.')) return null; // Skip hidden files
+				
+				const filePath = path.join(safeDir, file);
+				try {
+					const stats = await fs.stat(filePath);
+					if (stats.isFile()) {
+						totalSize += stats.size;
+						return { path: filePath, mtime: stats.mtime, size: stats.size };
+					}
+				} catch {
+					return null;
+				}
+				return null;
 			})
 		);
 		
+		const validFiles = fileStats.filter(Boolean);
 		const totalSizeMB = totalSize / (1024 * 1024);
 		
 		if (totalSizeMB > maxSizeMB) {
+			console.log(`📊 Directory size: ${totalSizeMB.toFixed(1)}MB (limit: ${maxSizeMB}MB)`);
+			
 			// Sort by modification time (oldest first)
-			fileStats.sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
+			validFiles.sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
 			
 			// Delete oldest files until under limit
 			let currentSize = totalSizeMB;
-			for (const file of fileStats) {
+			let deletedCount = 0;
+			const maxDeletions = 50; // SECURITY: Limit deletions
+			
+			for (const file of validFiles.slice(0, maxDeletions)) {
 				if (currentSize <= maxSizeMB) break;
 				
 				try {
 					await fs.unlink(file.path);
 					currentSize -= file.size / (1024 * 1024);
-					console.log(`Removed file to free space: ${file.path}`);
+					deletedCount++;
+					console.log(`🗑️ Removed file to free space: ${path.basename(file.path)}`);
 				} catch (error) {
-					console.warn(`Failed to remove file ${file.path}: ${error}`);
+					console.warn(`Failed to remove file ${file.path}: ${error.message}`);
 				}
+			}
+			
+			if (deletedCount > 0) {
+				console.log(`✅ Size cleanup: ${deletedCount} files removed, now ${currentSize.toFixed(1)}MB`);
 			}
 		}
 	} catch (error) {
-		console.warn(`Directory size check failed: ${error}`);
+		console.warn(`Directory size check failed: ${error.message}`);
 	}
 }
 
@@ -211,5 +326,7 @@ module.exports = {
 	cleanupFiles,
 	getFileSize,
 	checkDirectorySize,
-	createUniqueFilename
+	createUniqueFilename,
+	validateSavePath,
+	validateFileSize
 };
