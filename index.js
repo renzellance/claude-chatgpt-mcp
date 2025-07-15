@@ -7,7 +7,7 @@
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
-const runAppleScript = require("run-applescript");
+const { runAppleScript } = require("run-applescript");
 const { v4: uuidv4 } = require("uuid");
 const os = require('os');
 const path = require('path');
@@ -405,7 +405,7 @@ function getLatestImage() {
 const server = new Server(
 	{
 		name: "claude-chatgpt-mcp",
-		version: "2.7.0",
+		version: "2.7.1",
 	},
 	{
 		capabilities: {
@@ -585,7 +585,7 @@ async function main() {
 		
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
-		console.error("Enhanced ChatGPT MCP Server v2.7.0 running on stdio");
+		console.error("Enhanced ChatGPT MCP Server v2.7.1 running on stdio");
 		
 		// Graceful shutdown handling
 		process.on('SIGINT', async () => {
