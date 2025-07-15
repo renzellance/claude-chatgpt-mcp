@@ -7,7 +7,6 @@
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
-const runAppleScript = require("run-applescript");
 const { v4: uuidv4 } = require("uuid");
 const os = require('os');
 const path = require('path');
@@ -130,7 +129,7 @@ async function cleanupFiles(directory) {
 }
 
 // =============================================================================
-// APPLESCRIPT EXECUTION
+// APPLESCRIPT EXECUTION WITH DYNAMIC IMPORT
 // =============================================================================
 async function executeAppleScript(script, options = {}) {
 	const timeout = options.timeout || CONFIG.applescript.defaultTimeout;
@@ -142,6 +141,9 @@ async function executeAppleScript(script, options = {}) {
 	for (let attempt = 1; attempt <= retries; attempt++) {
 		try {
 			console.error(`Executing AppleScript (attempt ${attempt}/${retries})`);
+			
+			// Dynamic import for ES Module compatibility
+			const { runAppleScript } = await import('run-applescript');
 			
 			const result = await Promise.race([
 				runAppleScript(sanitizedScript),
@@ -517,7 +519,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 				return {
 					content: [
 						{
-					type: "text",
+						type: "text",
 							text: `Generation status: ${JSON.stringify(statusResult, null, 2)}`
 						}
 					]
