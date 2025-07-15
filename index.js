@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Enhanced ChatGPT MCP Tool - FINAL SDK FIX
- * Using correct CommonJS import patterns that actually exist in MCP SDK
+ * Enhanced ChatGPT MCP Tool - WORKING SDK FIX
+ * Using correct imports and patterns from working examples
  */
 
 const { Server } = require("@modelcontextprotocol/sdk/server/index.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
+const { CallToolRequestSchema, ListToolsRequestSchema } = require("@modelcontextprotocol/sdk/types.js");
 const runAppleScript = require("run-applescript");
 const { v4: uuidv4 } = require("uuid");
 const os = require('os');
@@ -397,14 +398,14 @@ function getLatestImage() {
 }
 
 // =============================================================================
-// MCP SERVER SETUP USING CORRECT SDK PATTERNS
+// MCP SERVER SETUP USING CORRECT PATTERNS FROM WORKING EXAMPLES
 // =============================================================================
 
-// Create server instance using the correct Server class
+// Create server instance using the correct pattern
 const server = new Server(
 	{
 		name: "claude-chatgpt-mcp",
-		version: "2.6.0",
+		version: "2.7.0",
 	},
 	{
 		capabilities: {
@@ -413,15 +414,56 @@ const server = new Server(
 	}
 );
 
-// Register the chatgpt tool using setRequestHandler
-server.setRequestHandler("tools/call", async (request) => {
-	const { name, arguments: args } = request.params;
-	
-	if (name !== "chatgpt") {
-		throw new Error(`Unknown tool: ${name}`);
+// Register tools list handler using correct schema
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+	return {
+		tools: [
+			{
+				name: "chatgpt",
+				description: "Interact with ChatGPT desktop app with async image generation support. Operations: ask, generate_image (sync), start_image_generation (async), check_generation_status (async), get_latest_image (async), get_conversations",
+				inputSchema: {
+					type: "object",
+					properties: {
+						operation: {
+							type: "string",
+							enum: ["ask", "get_conversations", "generate_image", "start_image_generation", "check_generation_status", "get_latest_image"],
+							description: "Operation to perform"
+						},
+						prompt: {
+							type: "string", 
+							description: "Text prompt for ask, generate_image, or start_image_generation operations"
+						},
+						conversation_id: {
+							type: "string",
+							description: "Optional conversation ID to continue specific conversation"
+						},
+						image_style: {
+							type: "string",
+							description: "Image style (realistic, cartoon, abstract, etc.)"
+						},
+						image_size: {
+							type: "string", 
+							description: "Image size (1024x1024, 1792x1024, 1024x1792)"
+						},
+						generation_id: {
+							type: "string",
+							description: "Generation ID for check_generation_status operation"
+						}
+					},
+					required: ["operation"]
+				}
+			}
+		]
+	};
+});
+
+// Register tool call handler using correct schema
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+	if (request.params.name !== "chatgpt") {
+		throw new Error(`Unknown tool: ${request.params.name}`);
 	}
 	
-	const { operation, prompt, conversation_id, image_style, image_size, generation_id } = args;
+	const { operation, prompt, conversation_id, image_style, image_size, generation_id } = request.params.arguments || {};
 	
 	try {
 		switch (operation) {
@@ -519,49 +561,6 @@ server.setRequestHandler("tools/call", async (request) => {
 	}
 });
 
-// Register tools list handler
-server.setRequestHandler("tools/list", async () => {
-	return {
-		tools: [
-			{
-				name: "chatgpt",
-				description: "Interact with ChatGPT desktop app with async image generation support. Operations: ask, generate_image (sync), start_image_generation (async), check_generation_status (async), get_latest_image (async), get_conversations",
-				inputSchema: {
-					type: "object",
-					properties: {
-						operation: {
-							type: "string",
-							enum: ["ask", "get_conversations", "generate_image", "start_image_generation", "check_generation_status", "get_latest_image"],
-							description: "Operation to perform"
-						},
-						prompt: {
-							type: "string", 
-							description: "Text prompt for ask, generate_image, or start_image_generation operations"
-						},
-						conversation_id: {
-							type: "string",
-							description: "Optional conversation ID to continue specific conversation"
-						},
-						image_style: {
-							type: "string",
-							description: "Image style (realistic, cartoon, abstract, etc.)"
-						},
-						image_size: {
-							type: "string", 
-							description: "Image size (1024x1024, 1792x1024, 1024x1792)"
-						},
-						generation_id: {
-							type: "string",
-							description: "Generation ID for check_generation_status operation"
-						}
-					},
-					required: ["operation"]
-				}
-			}
-		]
-	};
-});
-
 // =============================================================================
 // INITIALIZATION AND MAIN
 // =============================================================================
@@ -586,7 +585,7 @@ async function main() {
 		
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
-		console.error("Enhanced ChatGPT MCP Server v2.6.0 running on stdio");
+		console.error("Enhanced ChatGPT MCP Server v2.7.0 running on stdio");
 		
 		// Graceful shutdown handling
 		process.on('SIGINT', async () => {
