@@ -1,5 +1,5 @@
 /**
- * Async Image Generation Service - SECURITY HARDENED (FIXED)
+ * Async Image Generation Service - SECURITY HARDENED (FINAL FIX)
  */
 
 import { GenerationStatus, AsyncImageGeneration, GenerationTracker } from '../core/types.js';
@@ -7,7 +7,7 @@ import { CONFIG } from '../core/config.js';
 import { v4 as uuidv4 } from 'uuid';
 import { globalRateLimiter, sanitizeErrorMessage, sanitizeForAppleScript } from '../utils/security.js';
 import { createError, withErrorHandling } from '../utils/error-handling.js';
-import { runAppleScript } from '../utils/applescript.js';
+import { runAppleScript } from './applescript.js';
 
 class AsyncGenerationTracker implements GenerationTracker {
   activeGenerations = new Map<string, AsyncImageGeneration>();
