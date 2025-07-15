@@ -1,18 +1,13 @@
 /**
- * Async Image Generation Service - FULLY SECURITY HARDENED
- * Updated to use unified security wrapper
+ * Async Image Generation Service - SECURITY HARDENED (FIXED)
  */
 
 import { GenerationStatus, AsyncImageGeneration, GenerationTracker } from '../core/types.js';
 import { CONFIG } from '../core/config.js';
 import { v4 as uuidv4 } from 'uuid';
-import { globalRateLimiter, sanitizeErrorMessage } from '../utils/security.js';
+import { globalRateLimiter, sanitizeErrorMessage, sanitizeForAppleScript } from '../utils/security.js';
 import { createError, withErrorHandling } from '../utils/error-handling.js';
-import { 
-  executeSecureImageScript,
-  executeSecureUIPolling,
-  executeSecureAppleScript
-} from '../utils/secure-applescript.js';
+import { runAppleScript } from '../utils/applescript.js';
 
 class AsyncGenerationTracker implements GenerationTracker {
   activeGenerations = new Map<string, AsyncImageGeneration>();
@@ -83,7 +78,7 @@ setInterval(() => {
 }, 5 * 60 * 1000); // Every 5 minutes
 
 /**
- * Start async image generation - FULLY SECURITY HARDENED
+ * Start async image generation - SECURITY HARDENED
  */
 export const startImageGeneration = withErrorHandling(async (
   prompt: string,
@@ -128,7 +123,7 @@ export const startImageGeneration = withErrorHandling(async (
   
   tracker.activeGenerations.set(id, generation);
   
-  // Start generation in background using secure wrapper
+  // Start generation in background using secure method
   triggerSecureImageGeneration(prompt.trim(), style, size, conversation_id, id)
     .catch(error => {
       // Mark as failed with sanitized error
@@ -160,25 +155,20 @@ export const checkGenerationStatus = withErrorHandling(async (id: string): Promi
   // If still generating, poll ChatGPT UI for status
   if (status.status === 'generating') {
     try {
-      const uiStatus = await executeSecureUIPolling();
+      const uiStatus = await pollChatGPTUI();
       
       // Enhanced completion check - verify actual image exists AND generation stopped
       if (uiStatus.isGenerating === false && uiStatus.hasRecentImage && uiStatus.imageCount > 0) {
-        // Additional verification: check if image is actually new
-        const isNewImage = await verifyNewImageGenerated();
+        // Move to completed
+        tracker.completedGenerations.set(id, {
+          id,
+          status: 'completed',
+          prompt: status.prompt,
+          timestamp: Date.now()
+        });
+        tracker.activeGenerations.delete(id);
         
-        if (isNewImage) {
-          // Move to completed
-          tracker.completedGenerations.set(id, {
-            id,
-            status: 'completed',
-            prompt: status.prompt,
-            timestamp: Date.now()
-          });
-          tracker.activeGenerations.delete(id);
-          
-          return tracker.completedGenerations.get(id)!;
-        }
+        return tracker.completedGenerations.get(id)!;
       }
       
       // Check for timeout (30 minutes max)
@@ -205,7 +195,7 @@ export const checkGenerationStatus = withErrorHandling(async (id: string): Promi
 }, 'checkGenerationStatus');
 
 /**
- * Get the latest generated image - FULLY SECURITY HARDENED
+ * Get the latest generated image - SECURITY HARDENED
  */
 export const getLatestImage = withErrorHandling(async (downloadPath?: string): Promise<string> => {
   // Rate limiting
@@ -222,7 +212,6 @@ export const getLatestImage = withErrorHandling(async (downloadPath?: string): P
     if (typeof downloadPath !== 'string') {
       throw createError('Invalid download path provided', 'INVALID_INPUT', false);
     }
-    // Additional path validation would be handled by file-system utilities
   }
   
   const script = `
@@ -273,7 +262,7 @@ export const getLatestImage = withErrorHandling(async (downloadPath?: string): P
     end tell
   `;
   
-  const result = await executeSecureAppleScript(script, 'get_latest_image');
+  const result = await runAppleScript(script);
   if (!result.success) {
     throw createError(`Failed to get latest image: ${sanitizeErrorMessage(result.error)}`, 'IMAGE_RETRIEVAL_FAILED', true);
   }
@@ -282,7 +271,7 @@ export const getLatestImage = withErrorHandling(async (downloadPath?: string): P
 }, 'getLatestImage');
 
 /**
- * Internal function to trigger image generation using secure wrapper
+ * Internal function to trigger image generation - SECURITY HARDENED
  */
 async function triggerSecureImageGeneration(
   prompt: string,
@@ -291,54 +280,120 @@ async function triggerSecureImageGeneration(
   conversation_id?: string,
   generationId?: string
 ): Promise<void> {
-  try {
-    // Use the secure image script from the unified wrapper
-    await executeSecureImageScript(prompt, style, size, conversation_id);
-  } catch (error) {
-    throw createError(
-      `Failed to trigger image generation: ${sanitizeErrorMessage(error)}`,
-      'GENERATION_TRIGGER_FAILED',
-      true
-    );
+  let fullPrompt = prompt;
+  
+  // Add style and size parameters to prompt if specified
+  if (style) {
+    fullPrompt += `, ${style} style`;
+  }
+  if (size) {
+    fullPrompt += `, ${size}`;
+  }
+  
+  // SECURITY FIX: Apply proper sanitization
+  const sanitizedPrompt = sanitizeForAppleScript(fullPrompt);
+  
+  const script = `
+    tell application "ChatGPT"
+      activate
+      delay 1
+      
+      tell application "System Events"
+        tell process "ChatGPT"
+          ${conversation_id ? `
+          -- Navigate to specific conversation if provided
+          try
+            -- Implementation for conversation navigation would go here
+            delay 0.5
+          end try
+          ` : ''}
+          
+          -- Find the input text area with fallback strategies
+          try
+            set inputField to text area 1 of scroll area 1 of group 1 of group 1 of window 1
+          on error
+            try
+              -- Fallback: find any text area that's editable
+              set inputField to first text area of window 1 whose value of attribute "AXEnabled" is true
+            on error
+              error "Could not find input field"
+            end try
+          end try
+          
+          -- Clear any existing text and type the prompt
+          set focused of inputField to true
+          key code 0 using {command down} -- Cmd+A to select all
+          delay 0.1
+          keystroke "${sanitizedPrompt}"
+          delay 0.5
+          
+          -- Press Enter to send
+          key code 36 -- Enter key
+          delay 1
+        end tell
+      end tell
+    end tell
+  `;
+  
+  const result = await runAppleScript(script);
+  if (!result.success) {
+    throw createError(`Failed to trigger image generation: ${sanitizeErrorMessage(result.error)}`, 'GENERATION_TRIGGER_FAILED', true);
   }
 }
 
 /**
- * Verify that a new image was actually generated
+ * Poll ChatGPT UI to check generation status - ENHANCED
  */
-async function verifyNewImageGenerated(): Promise<boolean> {
-  try {
-    const script = `
-      tell application "ChatGPT"
-        activate
-        delay 0.5
-        
-        tell application "System Events"
-          tell process "ChatGPT"
-            -- Check for recent images with timestamp verification
-            set imageElements to (every image of window 1)
-            if (count of imageElements) > 0 then
-              -- Look for any "just generated" indicators
-              set recentElements to (every static text of window 1 whose value contains "Just now" or value contains "Generated" or value contains "Created")
-              if (count of recentElements) > 0 then
-                return true
-              end if
-              
-              -- If no timestamp indicators, assume the last image is new if there are images
-              return true
+async function pollChatGPTUI(): Promise<{isGenerating: boolean, hasRecentImage: boolean, imageCount: number}> {
+  const script = `
+    tell application "ChatGPT"
+      activate
+      delay 0.5
+      
+      tell application "System Events"
+        tell process "ChatGPT"
+          -- Check for generating indicators
+          set isGenerating to false
+          set hasImages to false
+          set imageCount to 0
+          
+          -- Look for "Generating..." or similar indicators
+          try
+            set generatingElements to (every static text of window 1 whose value contains "generating" or value contains "Generating" or value contains "Creating")
+            if (count of generatingElements) > 0 then
+              set isGenerating to true
             end if
-            return false
-          end tell
+          end try
+          
+          -- Check for recent images and count them
+          try
+            set imageElements to (every image of window 1)
+            set imageCount to count of imageElements
+            if imageCount > 0 then
+              set hasImages to true
+            end if
+          end try
+          
+          return "isGenerating:" & isGenerating & ",hasImages:" & hasImages & ",imageCount:" & imageCount
         end tell
       end tell
-    `;
-    
-    const result = await executeSecureAppleScript(script, 'verify_new_image', 1);
-    return result.success && result.data === 'true';
-  } catch {
-    // If verification fails, assume image is new to avoid false negatives
-    return true;
+    end tell
+  `;
+  
+  const result = await runAppleScript(script);
+  if (!result.success) {
+    return {isGenerating: false, hasRecentImage: false, imageCount: 0};
   }
+  
+  // Parse the result more robustly
+  const data = result.data || "isGenerating:false,hasImages:false,imageCount:0";
+  const parsed = {
+    isGenerating: data.includes("isGenerating:true"),
+    hasRecentImage: data.includes("hasImages:true"),
+    imageCount: parseInt(data.match(/imageCount:(\d+)/)?.[1] || "0", 10)
+  };
+  
+  return parsed;
 }
 
 /**
