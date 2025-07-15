@@ -1,8 +1,8 @@
 {
   "name": "claude-chatgpt-mcp",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "main": "index.js",
-  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with async image generation support - SDK FIXED",
+  "description": "Enhanced Claude MCP tool to interact with the ChatGPT desktop app on macOS with async image generation support - WORKING",
   "author": "Syed Azhar",
   "license": "MIT",
   "bin": {
@@ -26,8 +26,8 @@
     "security",
     "hardened",
     "commonjs",
-    "sdk-fixed",
-    "working"
+    "working",
+    "fixed"
   ],
   "scripts": {
     "start": "node index.js",
@@ -58,7 +58,7 @@
       "Error message sanitization",
       "File validation and size limits",
       "Consolidated codebase eliminates module conflicts",
-      "Correct MCP SDK imports prevent startup failures"
+      "Correct MCP SDK patterns prevent startup failures"
     ],
     "audit": {
       "level": "moderate",
