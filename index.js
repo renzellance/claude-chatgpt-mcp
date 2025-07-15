@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Enhanced ChatGPT MCP Tool - Fixed SDK Usage
- * Updated to use correct MCP SDK patterns based on current documentation
+ * Updated to use correct CommonJS import patterns for MCP SDK
  */
 
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio");
@@ -397,47 +397,44 @@ function getLatestImage() {
 }
 
 // =============================================================================
-// MCP SERVER SETUP USING MODERN McpServer CLASS
+// MCP SERVER SETUP USING SIMPLIFIED TOOL PATTERN
 // =============================================================================
 
-// Create server instance using McpServer (new way)
+// Create server instance using McpServer
 const server = new McpServer({
 	name: "claude-chatgpt-mcp",
-	version: "2.4.0",
+	version: "2.5.0",
 });
 
-// Register the chatgpt tool using the new registerTool method
-server.registerTool(
+// Register the chatgpt tool using the tool method (backward compatible)
+server.tool(
 	"chatgpt",
+	"Interact with ChatGPT desktop app with async image generation support. Operations: ask, generate_image (sync), start_image_generation (async), check_generation_status (async), get_latest_image (async), get_conversations",
 	{
-		title: "ChatGPT Interaction Tool",
-		description: "Interact with ChatGPT desktop app with async image generation support. Operations: ask, generate_image (sync), start_image_generation (async), check_generation_status (async), get_latest_image (async), get_conversations",
-		inputSchema: {
-			operation: {
-				type: "string",
-				enum: ["ask", "get_conversations", "generate_image", "start_image_generation", "check_generation_status", "get_latest_image"],
-				description: "Operation to perform"
-			},
-			prompt: {
-				type: "string",
-				description: "Text prompt for ask, generate_image, or start_image_generation operations"
-			},
-			conversation_id: {
-				type: "string",
-				description: "Optional conversation ID to continue specific conversation"
-			},
-			image_style: {
-				type: "string",
-				description: "Image style (realistic, cartoon, abstract, etc.)"
-			},
-			image_size: {
-				type: "string",
-				description: "Image size (1024x1024, 1792x1024, 1024x1792)"
-			},
-			generation_id: {
-				type: "string",
-				description: "Generation ID for check_generation_status operation"
-			}
+		operation: {
+			type: "string",
+			enum: ["ask", "get_conversations", "generate_image", "start_image_generation", "check_generation_status", "get_latest_image"],
+			description: "Operation to perform"
+		},
+		prompt: {
+			type: "string", 
+			description: "Text prompt for ask, generate_image, or start_image_generation operations"
+		},
+		conversation_id: {
+			type: "string",
+			description: "Optional conversation ID to continue specific conversation"
+		},
+		image_style: {
+			type: "string",
+			description: "Image style (realistic, cartoon, abstract, etc.)"
+		},
+		image_size: {
+			type: "string", 
+			description: "Image size (1024x1024, 1792x1024, 1024x1792)"
+		},
+		generation_id: {
+			type: "string",
+			description: "Generation ID for check_generation_status operation"
 		}
 	},
 	async ({ operation, prompt, conversation_id, image_style, image_size, generation_id }) => {
@@ -562,7 +559,7 @@ async function main() {
 		
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
-		console.error("Enhanced ChatGPT MCP Server v2.4.0 running on stdio");
+		console.error("Enhanced ChatGPT MCP Server v2.5.0 running on stdio");
 		
 		// Graceful shutdown handling
 		process.on('SIGINT', async () => {
