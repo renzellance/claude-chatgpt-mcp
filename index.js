@@ -185,18 +185,29 @@ async function askChatGPT(prompt, conversationId = null) {
 			activate
 			delay ${CONFIG.applescript.baseDelay / 1000}
 			
-			-- Clear any existing text and enter new prompt
 			tell application "System Events"
 				tell process "ChatGPT"
-					-- Click on the text input area
-					click text field 1 of group 1 of group 1 of group 1 of window 1
-					delay ${CONFIG.applescript.clickDelay / 1000}
+					-- Try multiple approaches to find the text input
+					try
+						-- Approach 1: Direct text field access
+						click text field 1 of window 1
+						delay ${CONFIG.applescript.clickDelay / 1000}
+					on error
+						try
+							-- Approach 2: Look for text area
+							click text area 1 of window 1
+							delay ${CONFIG.applescript.clickDelay / 1000}
+						on error
+							-- Approach 3: Generic UI element click at bottom of window
+							click UI element 1 of window 1
+							delay ${CONFIG.applescript.clickDelay / 1000}
+						end try
+					end try
 					
-					-- Clear existing text
+					-- Clear existing text and type new prompt
 					key code 0 using command down -- Cmd+A
 					delay ${CONFIG.applescript.typeDelay / 1000}
 					
-					-- Type the prompt
 					keystroke "${escapedPrompt}"
 					delay ${CONFIG.applescript.typeDelay / 1000}
 					
@@ -230,11 +241,24 @@ async function generateImageSync(prompt, style = null, size = null) {
 			
 			tell application "System Events"
 				tell process "ChatGPT"
-					-- Click on the text input area
-					click text field 1 of group 1 of group 1 of group 1 of window 1
-					delay ${CONFIG.applescript.clickDelay / 1000}
+					-- Try multiple approaches to find the text input
+					try
+						-- Approach 1: Direct text field access
+						click text field 1 of window 1
+						delay ${CONFIG.applescript.clickDelay / 1000}
+					on error
+						try
+							-- Approach 2: Look for text area
+							click text area 1 of window 1
+							delay ${CONFIG.applescript.clickDelay / 1000}
+						on error
+							-- Approach 3: Generic UI element click at bottom of window
+							click UI element 1 of window 1
+							delay ${CONFIG.applescript.clickDelay / 1000}
+						end try
+					end try
 					
-					-- Clear and type the image generation prompt
+					-- Clear existing text and type image prompt
 					key code 0 using command down -- Cmd+A
 					delay ${CONFIG.applescript.typeDelay / 1000}
 					
