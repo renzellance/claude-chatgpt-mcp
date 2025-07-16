@@ -66,12 +66,22 @@ function sanitizeInput(input) {
 	if (typeof input !== 'string') {
 		return String(input || '');
 	}
-	// Remove potential script injection characters
+	// Remove potential script injection characters but preserve quotes for proper escaping
 	return input
 		.replace(/[`$\\]/g, '')
 		.replace(/\r?\n/g, ' ')
 		.trim()
 		.substring(0, 1000); // Limit length
+}
+
+function escapeAppleScriptString(input) {
+	if (typeof input !== 'string') {
+		return '';
+	}
+	// Properly escape quotes and backslashes for AppleScript
+	return input
+		.replace(/\\/g, '\\\\')  // Escape backslashes first
+		.replace(/"/g, '\\"');   // Escape double quotes
 }
 
 function validatePath(filePath) {
@@ -135,9 +145,6 @@ async function executeAppleScript(script, options = {}) {
 	const timeout = options.timeout || CONFIG.applescript.defaultTimeout;
 	const retries = options.retries || CONFIG.applescript.retryAttempts;
 	
-	// Security: Sanitize the script
-	const sanitizedScript = sanitizeInput(script);
-	
 	for (let attempt = 1; attempt <= retries; attempt++) {
 		try {
 			console.error(`Executing AppleScript (attempt ${attempt}/${retries})`);
@@ -146,7 +153,7 @@ async function executeAppleScript(script, options = {}) {
 			const { runAppleScript } = await import('run-applescript');
 			
 			const result = await Promise.race([
-				runAppleScript(sanitizedScript),
+				runAppleScript(script),
 				new Promise((_, reject) => 
 					setTimeout(() => reject(new Error('AppleScript timeout')), timeout)
 				)
@@ -171,6 +178,7 @@ async function executeAppleScript(script, options = {}) {
 // =============================================================================
 async function askChatGPT(prompt, conversationId = null) {
 	const sanitizedPrompt = sanitizeInput(prompt);
+	const escapedPrompt = escapeAppleScriptString(sanitizedPrompt);
 	
 	let script = `
 		tell application "ChatGPT"
@@ -189,7 +197,7 @@ async function askChatGPT(prompt, conversationId = null) {
 					delay ${CONFIG.applescript.typeDelay / 1000}
 					
 					-- Type the prompt
-					keystroke "${sanitizedPrompt}"
+					keystroke "${escapedPrompt}"
 					delay ${CONFIG.applescript.typeDelay / 1000}
 					
 					-- Send the message
@@ -213,6 +221,7 @@ async function generateImageSync(prompt, style = null, size = null) {
 	const imageSize = size || CONFIG.image.defaultSize;
 	
 	const fullPrompt = `Create an image: ${sanitizedPrompt}. Style: ${imageStyle}. Size: ${imageSize}`;
+	const escapedPrompt = escapeAppleScriptString(fullPrompt);
 	
 	let script = `
 		tell application "ChatGPT"
@@ -229,7 +238,7 @@ async function generateImageSync(prompt, style = null, size = null) {
 					key code 0 using command down -- Cmd+A
 					delay ${CONFIG.applescript.typeDelay / 1000}
 					
-					keystroke "${fullPrompt}"
+					keystroke "${escapedPrompt}"
 					delay ${CONFIG.applescript.typeDelay / 1000}
 					
 					-- Send the message
@@ -407,7 +416,7 @@ function getLatestImage() {
 const server = new Server(
 	{
 		name: "claude-chatgpt-mcp",
-		version: "3.0.0",
+		version: "3.0.1",
 	},
 	{
 		capabilities: {
@@ -587,7 +596,7 @@ async function main() {
 		
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
-		console.error("Enhanced ChatGPT MCP Server v3.0.0 running on stdio");
+		console.error("Enhanced ChatGPT MCP Server v3.0.1 running on stdio");
 		
 		// Graceful shutdown handling
 		process.on('SIGINT', async () => {
